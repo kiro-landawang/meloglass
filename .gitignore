@@ -3,3 +3,7 @@ build/
 *.iml
 local.properties
 .idea/
+_*.tmp
+_arts.json
+_joblog.txt
+_mg.zip
