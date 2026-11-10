@@ -27,18 +27,16 @@ input{font:inherit;color:inherit}
 body{
   font-family:"PingFang SC","HarmonyOS Sans SC","Microsoft YaHei",system-ui,sans-serif;
   background:radial-gradient(80% 60% at 50% 0%,#12162a,#05060c 80%);
-  color:var(--ink);min-height:100vh;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;gap:18px;padding:28px 16px;
+  color:var(--ink);height:100dvh;overflow:hidden;
 }
 .note{color:rgba(235,238,250,.45);font-size:13px;letter-spacing:.04em;text-align:center;max-width:640px;line-height:1.7}
 .note b{color:rgba(235,238,250,.75);font-weight:600}
 
-/* ============ 手机外框 ============ */
+/* ============ APP 全屏容器 ============ */
 .stage{position:relative}
 .phone{
-  position:relative;width:390px;height:844px;border-radius:54px;overflow:hidden;
+  position:relative;width:100vw;height:100dvh;border-radius:0;overflow:hidden;
   background:radial-gradient(130% 90% at 18% 0%,#1c2444 0%,var(--bg1) 46%,var(--bg2) 100%);
-  box-shadow:0 44px 120px rgba(0,0,0,.65),0 0 0 10px #0e1120,0 0 0 12px #272d47;
   transition:background .5s;
 }
 html.light .phone{background:radial-gradient(130% 90% at 18% 0%,#f6f8ff 0%,var(--bg1) 46%,var(--bg2) 100%)}
@@ -79,8 +77,6 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
 .app{position:absolute;inset:0;display:flex;flex-direction:column;
   transition:transform .4s cubic-bezier(.34,1.4,.64,1),border-radius .4s,filter .4s;transform-origin:50% 0%}
 .app.pushed{transform:scale(.92);border-radius:34px;filter:brightness(.72)}
-.statusbar{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:13px;font-weight:600;position:relative;z-index:5}
-.statusbar i{font-style:normal;opacity:.85;letter-spacing:1px}
 
 /* 顶部栏 */
 .topbar{height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;position:relative;z-index:20}
@@ -212,11 +208,7 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
 .hl-t{font-size:12px;font-weight:600;margin-top:8px}
 .hl-s{font-size:10.5px;color:var(--ink3);margin-top:3px}
 
-/* ============ 动效演示页 ============ */
-.fx-card{padding:18px;border-radius:24px;margin-bottom:14px}
-.fx-t{font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px}
-.fx-d{font-size:11.5px;color:var(--ink3);margin-top:5px;line-height:1.65}
-.fx-demo{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}
+/* ============ 动效演示页（已并入功能：登录=Morph / 设置=果冻 / 删除=确认框 / 音质=底部弹窗） ============ */
 .fx-tag{font-size:10px;color:var(--ink3);border:1px solid rgba(150,160,200,.25);padding:3px 9px;border-radius:8px;margin-top:10px;display:inline-block}
 
 /* ============ 曲库：分段标签（毛毛虫下划线） ============ */
@@ -328,16 +320,11 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
 </head>
 <body>
 
-<p class="note"><b>MeloGlass · 液态玻璃音乐 APP v0.1（C++ 核心 + WebView）</b><br>
-搜索 / 播放链 / 扫码登录全部由端上 C++（NDK）执行：网易云·QQ·酷狗游客可搜可播；汽水公开歌单/SEO 可解析，无签名搜不到。QQ 扫码若一直等待请改贴 Cookie，酷狗请贴网页版 Cookie。</p>
-
 <div class="stage">
 <div class="phone" id="phone">
   <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
 
   <div class="app" id="app">
-    <div class="statusbar"><i>9:41</i><span>●●●</span><i>5G ▮▮▮</i></div>
-
     <header class="topbar">
       <div class="tb-logo glass">◈ <em>MeloGlass</em></div>
       <button class="tb-btn glass" id="menuBtn">⋯</button>
@@ -347,16 +334,6 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
 
       <!-- ============ 首页 ============ -->
       <section class="page active" data-page="home">
-        <div class="search glass">🔍<input id="srInput" placeholder="搜索歌曲 / 歌手，聚合全平台结果" autocomplete="off"></div>
-        <div class="sr-chips">
-          <button class="chip on" id="chipAll">全平台聚合</button>
-          <button class="chip" data-src="qq">仅 QQ 音乐</button>
-          <button class="chip" data-src="wy">仅网易云</button>
-          <button class="chip" data-src="kg">仅酷狗</button>
-          <button class="chip" data-src="qs">仅汽水</button>
-        </div>
-        <div class="sr-res" id="srRes"></div>
-
         <div class="sec-t">平台接入 <small>点「连接」出官方扫码；QQ/酷狗可改贴 Cookie</small></div>
         <div class="plat-grid">
           <div class="plat glass">
@@ -405,43 +382,17 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
         </div>
       </section>
 
-      <!-- ============ 动效演示 ============ -->
-      <section class="page" data-page="fx">
-        <div class="sec-t">动效演示间 <small>全部按你给的参数实现</small></div>
-
-        <div class="fx-card glass">
-          <div class="fx-t">Submit Morph · 三段按钮</div>
-          <div class="fx-d">文字淡出 → 收缩成圆形 + 旋转加载环（1.2s）→ 变绿画对勾（1s）→ 恢复。收缩 300ms，ease-in-out。</div>
-          <div class="fx-demo">
-            <button class="morph" data-morph id="fxMorph"><span class="m-tx">提 交</span></button>
-            <button class="morph" data-morph style="height:38px;font-size:12px"><span class="m-tx">小尺寸也可以</span></button>
-          </div>
+      <!-- ============ 搜索 ============ -->
+      <section class="page" data-page="search">
+        <div class="search glass">🔍<input id="srInput" placeholder="搜索歌曲 / 歌手，聚合全平台结果" autocomplete="off"></div>
+        <div class="sr-chips">
+          <button class="chip on" id="chipAll">全平台聚合</button>
+          <button class="chip" data-src="qq">仅 QQ 音乐</button>
+          <button class="chip" data-src="wy">仅网易云</button>
+          <button class="chip" data-src="kg">仅酷狗</button>
+          <button class="chip" data-src="qs">仅汽水</button>
         </div>
-
-        <div class="fx-card glass">
-          <div class="fx-t">果冻开关 · Jelly Toggle</div>
-          <div class="fx-d">圆点滑向另一端，途中横向拉长成胶囊，到底回弹；底色灰→绿。350ms，带回弹弹簧曲线。</div>
-          <div class="fx-demo" style="gap:22px">
-            <div class="jt"></div><div class="jt on"></div>
-          </div>
-        </div>
-
-        <div class="fx-card glass">
-          <div class="fx-t">删除确认对话框</div>
-          <div class="fx-d">遮罩淡入 200ms + 背景 9px 高斯模糊；对话框 scale 0.8→1，cubic-bezier(.34,1.56,.64,1) 约 260ms 弹性过冲；取消时 scale→0.9 淡出、模糊解除。绝不啪一下直出。</div>
-          <div class="fx-demo"><button class="btn danger" id="fxDelBtn">删除歌单《夜间飞行》</button></div>
-        </div>
-
-        <div class="fx-card glass">
-          <div class="fx-t">下拉操作菜单</div>
-          <div class="fx-d">锚定右上角 ⋯ 正下方右对齐，transform-origin: top right；scale 0.85→1 + 淡入 180ms；菜单项按 8ms 间隔错落浮现；点外部收回。背景不变暗。← 点右上角「⋯」触发</div>
-        </div>
-
-        <div class="fx-card glass">
-          <div class="fx-t">底部弹窗 · 可拖拽</div>
-          <div class="fx-d">弹簧升起约 400ms，背后页面缩到 0.92 + 圆角 + 压暗；上拖有阻力，下拖超 1/3 或快速一甩关闭，否则弹回。</div>
-          <div class="fx-demo"><button class="btn" id="fxSheetBtn">打开（音质选择）</button></div>
-        </div>
+        <div class="sr-res" id="srRes"></div>
       </section>
 
       <!-- ============ 曲库 ============ -->
@@ -522,7 +473,7 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
     <nav class="tabbar glass" id="tabbar">
       <div class="pill" id="pill"></div>
       <button class="tab active" data-tab="home"><span class="ic">◉</span><span class="tx">首页</span></button>
-      <button class="tab" data-tab="fx"><span class="ic">✦</span><span class="tx">动效</span></button>
+      <button class="tab" data-tab="search"><span class="ic">⌕</span><span class="tx">搜索</span></button>
       <button class="tab" data-tab="lib"><span class="ic">♫</span><span class="tx">曲库</span></button>
       <button class="tab" data-tab="me"><span class="ic">◍</span><span class="tx">我的</span></button>
     </nav>
@@ -709,7 +660,6 @@ dd.addEventListener('click',e=>{const i=e.target.closest('.dd-i');if(i){dd.class
 const dlg=$('#dlgWrap');
 function openDlg(){$('#app').classList.add('pushed');dlg.classList.remove('closing');dlg.classList.add('open')}
 function closeDlg(){dlg.classList.add('closing');setTimeout(()=>{dlg.classList.remove('open','closing');$('#app').classList.remove('pushed')},210)}
-$('#fxDelBtn').addEventListener('click',openDlg);
 $$('[data-del-real]').forEach(b=>b.addEventListener('click',openDlg));
 $('#dlgCancel').addEventListener('click',closeDlg);
 $('#dlgMask').addEventListener('click',closeDlg);
@@ -722,7 +672,6 @@ function openSheet(){sheetOpen=true;sw.classList.add('open');appEl.classList.add
   sheet.style.transition='transform .4s cubic-bezier(.34,1.3,.64,1)';sheet.style.transform='translateY(0)'}
 function closeSheet(){sheetOpen=false;sw.classList.remove('open');appEl.classList.remove('pushed');
   sheet.style.transition='transform .4s cubic-bezier(.5,0,.75,.4)';sheet.style.transform='translateY(102%)'}
-$('#fxSheetBtn').addEventListener('click',openSheet);
 $('#qSheetBtn').addEventListener('click',openSheet);
 $('#sheetMask').addEventListener('click',closeSheet);
 $$('#qList .q-i').forEach(q=>q.addEventListener('click',()=>{
