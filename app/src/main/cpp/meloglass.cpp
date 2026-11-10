@@ -477,6 +477,35 @@ static cJSON *wy_lyric(JNIEnv *env, const std::string &sid) {
     return res;
 }
 
+static cJSON *wy_recommend(JNIEnv *env, int limit) {
+    std::string url = "https://music.163.com/api/personalized/playlist?limit=" + std::to_string(limit);
+    Up up = up_get(env, url, "https://music.163.com/", cookie_of("wy"));
+    cJSON *j = loads_maybe(up.text);
+    cJSON *out = cJSON_CreateArray();
+    if (j) {
+        cJSON *result = Jarr(j, "result");
+        if (result) {
+            int n = cJSON_GetArraySize(result);
+            for (int i = 0; i < n; i++) {
+                cJSON *it = cJSON_GetArrayItem(result, i);
+                cJSON *item = cJSON_CreateObject();
+                cJSON_AddStringToObject(item, "src", "wy");
+                std::string ids;
+                cJSON *idit = cJSON_GetObjectItemCaseSensitive(it, "id");
+                if (idit && cJSON_IsNumber(idit)) ids = std::to_string((long long) idit->valuedouble);
+                cJSON_AddStringToObject(item, "id", ids.c_str());
+                cJSON_AddStringToObject(item, "title", Jstr(it, "name").c_str());
+                cJSON_AddStringToObject(item, "cover", Jstr(it, "picUrl").c_str());
+                cJSON_AddNumberToObject(item, "count", Jnum(it, "trackCount", 0));
+                cJSON_AddNumberToObject(item, "playCount", Jnum(it, "playCount", 0));
+                cJSON_AddItemToArray(out, item);
+            }
+        }
+        cJSON_Delete(j);
+    }
+    return out;
+}
+
 static cJSON *wy_newsong(JNIEnv *env) {
     Up up = up_get(env, "https://music.163.com/api/personalized/newsong", "https://music.163.com/");
     cJSON *j = loads_maybe(up.text);
@@ -1604,6 +1633,16 @@ static std::string dispatch(JNIEnv *env, const std::string &method, const std::s
     // ---- newsong
     if (p == "/api/newsong") {
         cJSON *data = wy_newsong(env);
+        cJSON *j = cJSON_CreateObject();
+        cJSON_AddNumberToObject(j, "code", 0);
+        cJSON_AddItemToObject(j, "data", data);
+        std::string s = Jprint(j);
+        cJSON_Delete(j);
+        return s;
+    }
+
+    if (p == "/api/recommend") {
+        cJSON *data = wy_recommend(env, 8);
         cJSON *j = cJSON_CreateObject();
         cJSON_AddNumberToObject(j, "code", 0);
         cJSON_AddItemToObject(j, "data", data);

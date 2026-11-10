@@ -68,20 +68,26 @@ public class MainActivity extends Activity {
     private static final Map<String, Object[]> LOGIN_CFG = new HashMap<>();
     static {
         LOGIN_CFG.put("qq", new Object[]{
-                "https://y.qq.com/portal/login.html",
-                new String[]{"https://y.qq.com/", "https://u.y.qq.com/", "https://graph.qq.com/"},
-                new String[]{"qm_keyst", "uin=", "p_skey"}});
+                "https://i.y.qq.com/n2/m/login/index.html",
+                new String[]{
+                        "https://y.qq.com/", "https://i.y.qq.com/", "https://u.y.qq.com/",
+                        "https://graph.qq.com/", "https://ptlogin2.qq.com/", "https://qq.com/"
+                },
+                new String[]{"qm_keyst", "uin=", "wxuin", "p_skey", "luin"}});
         LOGIN_CFG.put("kg", new Object[]{
-                "https://m.kugou.com/login/",
-                new String[]{"https://m.kugou.com/", "https://www.kugou.com/", "https://user.kugou.com/"},
-                new String[]{"userid=", "kugou_login_name", "KuGoo=", "kugou_"}});
+                "https://www.kugou.com/",
+                new String[]{"https://www.kugou.com/", "https://m.kugou.com/", "https://user.kugou.com/"},
+                new String[]{"userid=", "kugou_login_name", "KuGoo=", "Kugoo", "token="}});
         LOGIN_CFG.put("qs", new Object[]{
-                "https://www.qishui.com/",
-                new String[]{"https://www.qishui.com/", "https://api.qishui.com/"},
-                new String[]{"sessionid", "sid_tt", "sid_guard"}});
+                "https://sso.douyin.com/",
+                new String[]{
+                        "https://sso.douyin.com/", "https://www.douyin.com/",
+                        "https://www.qishui.com/", "https://api.qishui.com/"
+                },
+                new String[]{"sessionid", "sid_tt", "sid_guard", "sid_ucp_v1"}});
         LOGIN_CFG.put("wy", new Object[]{
-                "https://music.163.com/",
-                new String[]{"https://music.163.com/"},
+                "https://music.163.com/m/login",
+                new String[]{"https://music.163.com/", "https://y.music.163.com/"},
                 new String[]{"MUSIC_U"}});
     }
 
@@ -182,11 +188,13 @@ public class MainActivity extends Activity {
         ws.setJavaScriptCanOpenWindowsAutomatically(true);
         ws.setSupportMultipleWindows(false);
         ws.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        ws.setUserAgentString(
+                "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 "
+                        + "(KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36");
         CookieManager.getInstance().setAcceptThirdPartyCookies(loginWebView, true);
         loginWebView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView v, String u) {
-                // 放行外部 App 跳转（QQ 快捷登录拉起手机 QQ 等）
                 if (u != null && !u.startsWith("http://") && !u.startsWith("https://")) {
                     try {
                         startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(u)));
@@ -195,6 +203,11 @@ public class MainActivity extends Activity {
                     return true;
                 }
                 return false;
+            }
+
+            @Override
+            public void onPageFinished(WebView v, String u) {
+                injectLoginHelper(src);
             }
         });
         loginWebView.setWebChromeClient(new WebChromeClient());
@@ -222,7 +235,8 @@ public class MainActivity extends Activity {
                 if (containsAny(merged, keys)) {
                     String js = "window.__nativeLogin && window.__nativeLogin("
                             + JSONObject.quote(src) + "," + JSONObject.quote(merged) + ")";
-                    if (loginWebView != null) loginWebView.evaluateJavascript(js, null);
+                    // 回调必须打到 APP 主 WebView，登录页里没有 __nativeLogin
+                    if (web != null) web.evaluateJavascript(js, null);
                     Toast.makeText(MainActivity.this, "检测到登录成功，已保存", Toast.LENGTH_SHORT).show();
                     uiHandler.postDelayed(MainActivity.this::closeLoginWeb, 900);
                     return;
@@ -281,6 +295,22 @@ public class MainActivity extends Activity {
             if (s.contains(k)) return true;
         }
         return false;
+    }
+
+    /** 官网首页没有登录表单时，自动点「登录」入口；已在登录页则不动。 */
+    private void injectLoginHelper(String src) {
+        if (loginWebView == null) return;
+        String js =
+                "(function(){"
+                + "var t=document.title||'';"
+                + "var b=(document.body&&document.body.innerText)||'';"
+                + "if(/登录|微信|QQ|手机号|验证码/.test(b) && b.length<4000) return;"
+                + "function hit(n){var x=(n.innerText||n.textContent||'').replace(/\\s+/g,'').trim();"
+                + "return x==='登录'||x==='立即登录'||x==='登录/注册'||x==='Signin';}"
+                + "var ns=document.querySelectorAll('a,button,span,div');"
+                + "for(var i=0;i<ns.length;i++){if(hit(ns[i])&&ns[i].offsetParent){ns[i].click();return;}}"
+                + "})();";
+        loginWebView.evaluateJavascript(js, null);
     }
 
     private int dp(int v) {

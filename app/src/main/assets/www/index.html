@@ -241,7 +241,7 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
 .d-scroll{position:absolute;inset:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none}
 .d-scroll::-webkit-scrollbar{display:none}
 .d-hero{position:relative;height:330px;display:flex;align-items:flex-end;padding:0 22px 24px;overflow:visible}
-.d-hero-img{position:absolute;inset:0;border-radius:0 0 34px 34px;overflow:hidden;
+.d-hero-img{position:absolute;inset:0;border-radius:0 0 34px 34px;overflow:hidden;background-size:cover;background-position:center;
   background:linear-gradient(150deg,#2b3a86 0%,#6d4b9e 45%,#c76a9a 80%,#e8a06b 100%);will-change:transform}
 .d-hero-img::after{content:"";position:absolute;inset:0;background:radial-gradient(70% 50% at 70% 20%,rgba(255,255,255,.22),transparent 60%)}
 .d-hero-dim{position:absolute;inset:0;border-radius:0 0 34px 34px;background:#000;opacity:0;pointer-events:none}
@@ -374,12 +374,8 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
           </div>
         </div>
 
-        <div class="sec-t">为你推荐 <small>点封面进详情页</small></div>
-        <div class="hl-row">
-          <div class="hl-card glass" data-open-detail><div class="hl-cov" style="background:linear-gradient(150deg,#2b3a86,#c76a9a)">深夜电台</div><div class="hl-t">深夜电台 Vol.7</div><div class="hl-s">32 首 · 缓私域</div></div>
-          <div class="hl-card glass" data-open-detail><div class="hl-cov" style="background:linear-gradient(150deg,#0f766e,#84ccab)">雨声耳语</div><div class="hl-t">雨声耳语</div><div class="hl-s">24 首 · 助眠</div></div>
-          <div class="hl-card glass" data-open-detail><div class="hl-cov" style="background:linear-gradient(150deg,#b45309,#f59e6b)">落日公路</div><div class="hl-t">落日公路</div><div class="hl-s">28 首 · 驾驶</div></div>
-        </div>
+        <div class="sec-t">为你推荐 <small>真实歌单，点封面进详情</small></div>
+        <div class="hl-row" id="hlRow"></div>
       </section>
 
       <!-- ============ 搜索 ============ -->
@@ -407,12 +403,7 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
         </div>
         <div class="seg-view" id="segView">
           <div class="seg-pages" id="segPages">
-            <div class="seg-p">
-              <div class="mini glass"><div class="m-c" style="background:linear-gradient(135deg,#8b5cf6,#d946ef)">🔥</div><div><div class="m-t">飙升新歌榜</div><div class="m-s">聚合四平台 · 每小时更新</div></div></div>
-              <div class="mini glass"><div class="m-c" style="background:linear-gradient(135deg,#0ea5e9,#22d3ee)">🌊</div><div><div class="m-t">华语速爆</div><div class="m-s">QQ × 网易云 双源匹配</div></div></div>
-              <div class="mini glass"><div class="m-c" style="background:linear-gradient(135deg,#f59e0b,#ef4444)">🎯</div><div><div class="m-t">私荐 FM</div><div class="m-s">按你的口味跨平台生成</div></div></div>
-              <div class="mini glass"><div class="m-c" style="background:linear-gradient(135deg,#10b981,#34d399)">💤</div><div><div class="m-t">白噪音·专注</div><div class="m-s">汽水源 · 无损</div></div></div>
-            </div>
+            <div class="seg-p" id="discoverList"></div>
             <div class="seg-p">
               <div class="merge-note">◈ <b>整合歌单</b>：四个平台登录后，同名/同 ID 歌曲自动<b>合并去重</b>（保留最高音质源），本地保存。<b>待你确认：</b>合并规则与保存位置。</div>
               <div class="mini glass"><div class="m-c" style="background:linear-gradient(150deg,#2b3a86,#c76a9a)">◈</div><div><div class="m-t">我的整合歌单 · 夜间飞行</div><div class="m-s">32 首 · 来自 QQ/网易云/酷狗</div></div>
@@ -540,13 +531,13 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
   <div class="detail" id="detail">
     <div class="d-nav" id="dNav">
       <button class="d-back" id="dBack">‹</button>
-      <span class="d-nav-t">深夜电台 Vol.7</span><span class="sp"></span>
+      <span class="d-nav-t">歌单</span><span class="sp"></span>
     </div>
     <div class="d-scroll" id="dScroll">
       <div class="d-hero" id="dHero">
         <div class="d-hero-img" id="dHeroImg"></div>
         <div class="d-hero-dim" id="dHeroDim"></div>
-        <h1 class="d-title" id="dTitle">深夜电台 Vol.7</h1>
+        <h1 class="d-title" id="dTitle">歌单</h1>
         <div class="d-sub" id="dSub">32 首 · 缓私域 · 已整合 3 个平台</div>
       </div>
       <div class="d-body">
@@ -746,8 +737,6 @@ const detail=$('#detail'), dScroll=$('#dScroll'), dHeroImg=$('#dHeroImg'), dDim=
       dTitle=$('#dTitle'), dSub=$('#dSub'), dNav=$('#dNav');
 const HERO_H=330, COLLAPSE=250;
 /* 填充曲目 */
-const tracks=['晚风信箱','雾里行走','城南旧灯','银河慢递','退潮之后','玻璃晴朗','候鸟十二点','空巷','低温火焰','失眠收容所','海雾预报','黎明前的钟摆'];
-$('#dTracks').innerHTML=tracks.map((t,i)=>`<div class="d-track"><span class="d-n">${String(i+1).padStart(2,'0')}</span><div><div class="m-t">${t}</div><div class="m-s">${['QQ音乐','网易云','酷狗','汽水'][i%4]} · ${['无损','Hi-Res','高品','无损'][i%4]}</div></div><span class="d-hb">♥</span></div>`).join('');
 let dOpen=false;
 function syncDetail(){
   const s=dScroll.scrollTop;
@@ -763,7 +752,6 @@ function syncDetail(){
 dScroll.addEventListener('scroll',()=>{if(!pullStretch)syncDetail()});
 function openDetail(){dOpen=true;detail.classList.add('open');dScroll.scrollTop=0;setTimeout(syncDetail,60)}
 $('#dBack').addEventListener('click',()=>{dOpen=false;detail.classList.remove('open')});
-$$('[data-open-detail]').forEach(c=>c.addEventListener('click',openDetail));
 /* 顶部下拉拉伸 + 松手按速度吸附（不停在半路） */
 let pullStretch=false,puY=0,pu0=0,puLastY=0,puLastT=0,puVel=0;
 dScroll.addEventListener('touchstart',e=>{
@@ -854,14 +842,66 @@ srRes.addEventListener('click',async e=>{
   }catch(err){toast('播放失败 '+err.message)}
 });
 
-/* 新歌速递走网易云公开接口 */
-(async()=>{
+function playCountText(n){
+  n=+n||0; if(n>=100000000) return (n/100000000).toFixed(1)+'亿播放';
+  if(n>=10000) return Math.round(n/10000)+'万播放';
+  return n+' 播放';
+}
+async function loadHomeLive(){
   try{
     const j=await api('/api/newsong');
-    const box=$('.feed-real'); if(!box||!j.data) return;
-    box.innerHTML=j.data.slice(0,3).map((it,i)=>`<div class="fd-item" style="--i:${i}"><div class="fd-cover" style="background:linear-gradient(135deg,#ff6a8a,#7a5cff)">♪</div><div><div class="s-t">${it.title||''}</div><div class="s-a">${it.artist||''} · 网易云</div></div></div>`).join('');
+    const box=$('.feed-real');
+    if(box && j.data){
+      box.innerHTML=j.data.slice(0,6).map((it,i)=>`<div class="fd-item" style="--i:${i}" data-play='${JSON.stringify({src:it.src,id:it.id,title:it.title,artist:it.artist}).replace(/'/g,'&#39;')}'><div class="fd-cover" style="background:linear-gradient(135deg,#ff6a8a,#7a5cff)${it.cover?';background-image:url('+it.cover+');background-size:cover':''}">♪</div><div><div class="s-t">${it.title||''}</div><div class="s-a">${it.artist||''} · 网易云</div></div></div>`).join('');
+    }
   }catch(_){}
-})();
+  try{
+    const j=await api('/api/recommend');
+    const row=$('#hlRow'), disc=$('#discoverList');
+    const list=j.data||[];
+    if(row){
+      row.innerHTML=list.slice(0,6).map(it=>`<div class="hl-card glass" data-pl-src="${it.src}" data-pl-id="${it.id}" data-pl-title="${(it.title||'').replace(/"/g,'&quot;')}" data-pl-cover="${it.cover||''}"><div class="hl-cov" style="${it.cover?'background-image:url('+it.cover+');background-size:cover;background-position:center':'background:linear-gradient(150deg,#2b3a86,#c76a9a)'}"></div><div class="hl-t">${it.title||''}</div><div class="hl-s">${it.count||0} 首 · ${playCountText(it.playCount)}</div></div>`).join('');
+    }
+    if(disc){
+      disc.innerHTML=list.map(it=>`<div class="mini glass" data-pl-src="${it.src}" data-pl-id="${it.id}" data-pl-title="${(it.title||'').replace(/"/g,'&quot;')}" data-pl-cover="${it.cover||''}"><div class="m-c" style="${it.cover?'background-image:url('+it.cover+');background-size:cover':'background:linear-gradient(135deg,#8b5cf6,#d946ef)'}"></div><div><div class="m-t">${it.title||''}</div><div class="m-s">${it.count||0} 首 · ${playCountText(it.playCount)}</div></div></div>`).join('');
+    }
+  }catch(_){}
+}
+loadHomeLive();
+document.addEventListener('click',e=>{
+  const card=e.target.closest('[data-pl-id]');
+  if(card) openPlaylist(card.dataset.plSrc, card.dataset.plId, card.dataset.plTitle, card.dataset.plCover);
+  const fd=e.target.closest('.fd-item[data-play]');
+  if(fd){ try{ const it=JSON.parse(fd.dataset.play); playItem(it);}catch(_){}}
+});
+async function playItem(it){
+  if(!it||!it.id){toast('无法播放');return}
+  toast('取播放链 · '+(srcName[it.src]||it.src));
+  try{
+    const j=await api('/api/playurl?src='+it.src+'&id='+encodeURIComponent(it.id));
+    const d=j.data||{};
+    if(!d.url){toast(d.message||'该曲需要登录或会员');return}
+    player.src=d.url; player.play().catch(()=>toast('点一下播放条再试'));
+    $('#nowp').classList.add('on');
+    $('#npTitle').textContent=it.title||d.title||'正在播放';
+    $('#npArtist').textContent=(it.artist||d.artist||'')+' · '+(srcName[it.src]||'');
+  }catch(err){toast('播放失败 '+err.message)}
+}
+async function openPlaylist(src,id,title,cover){
+  openDetail();
+  $('#dTitle').textContent=title||'歌单';
+  $('#dSub').textContent='加载曲目中…';
+  if(cover) $('#dHeroImg').style.backgroundImage='url('+cover+')';
+  $('#dTracks').innerHTML='';
+  try{
+    const j=await api('/api/playlist?src='+src+'&id='+encodeURIComponent(id));
+    const d=j.data||{};
+    const tracks=d.tracks||[];
+    $('#dTitle').textContent=d.title||title||'歌单';
+    $('#dSub').textContent=(tracks.length||d.count||0)+' 首 · 网易云';
+    $('#dTracks').innerHTML=tracks.map((t,i)=>`<div class="d-track" data-play='${JSON.stringify({src:t.src||src,id:t.id,title:t.title,artist:t.artist}).replace(/'/g,'&#39;')}'><span class="d-n">${String(i+1).padStart(2,'0')}</span><div><div class="m-t">${t.title||''}</div><div class="m-s">${t.artist||''}</div></div><span class="d-hb">♥</span></div>`).join('');
+  }catch(e){ $('#dSub').textContent='加载失败 '+e.message; }
+}
 
 /* 合并去重按钮 */
 $('#mergeBtn').addEventListener('morphend',()=>toast('已重新合并去重：204 → 187 首（演示，规则待确认）'));
@@ -888,10 +928,10 @@ function closeLogin(){
 }
 /* APP 内：全部平台走内置浏览器打开官方登录页（QQ/微信/账号密码/扫码随官方支持） */
 const LOGIN_WEB_URL={
-  qq:'https://y.qq.com/portal/login.html',
-  wy:'https://music.163.com/',
-  kg:'https://m.kugou.com/login/',
-  qs:'https://www.qishui.com/'
+  qq:'https://i.y.qq.com/n2/m/login/index.html',
+  wy:'https://music.163.com/m/login',
+  kg:'https://www.kugou.com/',
+  qs:'https://sso.douyin.com/'
 };
 /* Java 层检测到登录 Cookie 后回调这里 */
 window.__nativeLogin = async function(src, cookie){
