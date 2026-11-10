@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MeloGlass · 液态玻璃音乐 APP 交互预览</title>
+<style>
+/* ============ 设计变量：液态玻璃参数全部集中在这里 ============ */
+:root{
+  --blur:28px;            /* 液态玻璃：高斯模糊 28px */
+  --sat:170%;             /* 饱和度 170% */
+  --glass-w:10%;          /* 叠加白色不透明度 10% */
+  --card-r:24px;
+  --green:#34d399;
+  --accent:#8b9dff;
+  --tab-h:78px;
+  --ink:#f2f4fa; --ink2:rgba(242,244,250,.62); --ink3:rgba(242,244,250,.38);
+  --bg1:#0b0e1a; --bg2:#131a30;
+}
+html.light{
+  --ink:#1b2030; --ink2:rgba(27,32,48,.66); --ink3:rgba(27,32,48,.42);
+  --bg1:#edf0f8; --bg2:#dfe5f3;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input{font:inherit;color:inherit}
+body{
+  font-family:"PingFang SC","HarmonyOS Sans SC","Microsoft YaHei",system-ui,sans-serif;
+  background:radial-gradient(80% 60% at 50% 0%,#12162a,#05060c 80%);
+  color:var(--ink);min-height:100vh;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:18px;padding:28px 16px;
+}
+.note{color:rgba(235,238,250,.45);font-size:13px;letter-spacing:.04em;text-align:center;max-width:640px;line-height:1.7}
+.note b{color:rgba(235,238,250,.75);font-weight:600}
+
+/* ============ 手机外框 ============ */
+.stage{position:relative}
+.phone{
+  position:relative;width:390px;height:844px;border-radius:54px;overflow:hidden;
+  background:radial-gradient(130% 90% at 18% 0%,#1c2444 0%,var(--bg1) 46%,var(--bg2) 100%);
+  box-shadow:0 44px 120px rgba(0,0,0,.65),0 0 0 10px #0e1120,0 0 0 12px #272d47;
+  transition:background .5s;
+}
+html.light .phone{background:radial-gradient(130% 90% at 18% 0%,#f6f8ff 0%,var(--bg1) 46%,var(--bg2) 100%)}
+/* 大块柔和形状（玻璃后面的色源） */
+.blob{position:absolute;border-radius:50%;filter:blur(72px);pointer-events:none}
+.b1{width:360px;height:360px;left:-100px;top:-70px;background:radial-gradient(circle,#5a6cff,transparent 66%)}
+.b2{width:320px;height:320px;right:-90px;top:170px;background:radial-gradient(circle,#c86dd7,transparent 66%)}
+.b3{width:340px;height:340px;left:-70px;bottom:-90px;background:radial-gradient(circle,#2dd4bf,transparent 66%)}
+html.light .blob{opacity:.5}
+
+/* ============ 液态玻璃本体 ============ */
+.glass{
+  position:relative;border-radius:var(--card-r);
+  background:linear-gradient(135deg,rgba(255,255,255,var(--glass-w)),rgba(255,255,255,calc(var(--glass-w)*.35)));
+  backdrop-filter:blur(var(--blur)) saturate(var(--sat));
+  -webkit-backdrop-filter:blur(var(--blur)) saturate(var(--sat));
+  border:1px solid rgba(255,255,255,.26);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.34),inset 0 -1px 0 rgba(255,255,255,.06),0 16px 40px rgba(0,0,0,.26);
+}
+html.light .glass{border-color:rgba(255,255,255,.75);box-shadow:inset 0 1px 0 rgba(255,255,255,.95),inset 0 -1px 0 rgba(255,255,255,.3),0 14px 34px rgba(60,70,110,.16)}
+/* 1px 亮边带出厚度 + 边缘折射 */
+.glass::before{
+  content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
+  background:linear-gradient(125deg,rgba(255,255,255,.75),rgba(255,255,255,.06) 30%,rgba(255,255,255,.06) 60%,rgba(255,255,255,.45));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;
+}
+.glass::after{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  box-shadow:inset 0 0 22px rgba(150,175,255,.15),inset 0 0 5px rgba(255,165,225,.10);
+}
+/* 液态玻璃总开关（我的-设置里可关，看降级效果） */
+.noglass .glass{backdrop-filter:none;-webkit-backdrop-filter:none;background:rgba(255,255,255,.07)}
+.noglass .glass::before,.noglass .glass::after{display:none}
+html.light .noglass .glass{background:rgba(255,255,255,.6)}
+
+/* ============ App 骨架 ============ */
+.app{position:absolute;inset:0;display:flex;flex-direction:column;
+  transition:transform .4s cubic-bezier(.34,1.4,.64,1),border-radius .4s,filter .4s;transform-origin:50% 0%}
+.app.pushed{transform:scale(.92);border-radius:34px;filter:brightness(.72)}
+.statusbar{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 26px;font-size:13px;font-weight:600;position:relative;z-index:5}
+.statusbar i{font-style:normal;opacity:.85;letter-spacing:1px}
+
+/* 顶部栏 */
+.topbar{height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;position:relative;z-index:20}
+.tb-logo{font-weight:800;font-size:16px;letter-spacing:.03em;padding:9px 16px;border-radius:16px;display:flex;align-items:center;gap:8px}
+.tb-logo em{font-style:normal;background:linear-gradient(120deg,#8b9dff,#e08bff);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.tb-btn{width:40px;height:40px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:20px;color:var(--ink)}
+
+/* 页面容器 */
+.pages{flex:1;position:relative;overflow:hidden;z-index:5}
+.page{position:absolute;inset:0;overflow-y:auto;overscroll-behavior:contain;padding:6px 18px 100px;
+  opacity:0;transform:translateY(10px);pointer-events:none;transition:opacity .28s,transform .28s;scrollbar-width:none}
+.page::-webkit-scrollbar{display:none}
+.page.active{opacity:1;transform:none;pointer-events:auto}
+.sec-t{font-size:15px;font-weight:700;margin:20px 2px 12px;display:flex;align-items:center;justify-content:space-between}
+.sec-t small{font-size:12px;font-weight:400;color:var(--ink3)}
+
+/* ============ 底部导航（水滴胶囊） ============ */
+.tabbar{
+  position:absolute;left:14px;right:14px;bottom:16px;height:var(--tab-h);z-index:30;
+  display:flex;border-radius:26px;
+}
+.pill{position:absolute;top:50%;margin-top:-22px;height:44px;border-radius:22px;
+  background:linear-gradient(135deg,rgba(139,157,255,.34),rgba(224,139,255,.26));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 6px 18px rgba(120,110,255,.28);
+  left:6px;width:84px;will-change:left,width,transform}
+.tab{flex:1;position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--ink3);transition:color .3s}
+.tab .ic{font-size:19px;line-height:1;display:inline-block}
+.tab .tx{font-size:10.5px;letter-spacing:.05em}
+.tab.active{color:var(--ink)}
+
+/* ============ 通用小组件 ============ */
+.chip{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;border-radius:999px;font-size:12.5px;color:var(--ink2)}
+.chip.on{color:var(--ink);background:linear-gradient(135deg,rgba(139,157,255,.35),rgba(224,139,255,.22));box-shadow:inset 0 1px 0 rgba(255,255,255,.35)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:11px 20px;border-radius:14px;font-size:13.5px;font-weight:600;color:var(--ink);
+  background:linear-gradient(135deg,rgba(139,157,255,.32),rgba(224,139,255,.2));box-shadow:inset 0 1px 0 rgba(255,255,255,.35);transition:transform .15s}
+.btn:active{transform:scale(.96)}
+.btn.danger{background:linear-gradient(135deg,rgba(255,110,130,.4),rgba(255,140,110,.25))}
+.toast{position:absolute;left:50%;bottom:112px;transform:translate(-50%,16px);z-index:90;opacity:0;pointer-events:none;
+  padding:11px 18px;border-radius:16px;font-size:12.5px;transition:.3s;max-width:320px;text-align:center}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+/* ============ Submit Morph 三段按钮 ============ */
+.morph{position:relative;overflow:hidden;min-width:52px;height:44px;padding:0 20px;border-radius:14px;font-size:13.5px;font-weight:600;color:#fff;
+  background:linear-gradient(135deg,#8b9dff,#b18cff);box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 8px 20px rgba(130,120,255,.35);
+  transition:width .3s ease-in-out,background .35s,border-radius .3s,box-shadow .35s;white-space:nowrap}
+.morph .m-tx{transition:opacity .18s}
+.morph.busy{border-radius:999px}
+.morph.busy .m-tx{opacity:0}
+.morph.busy::before{content:"";position:absolute;inset:0;margin:auto;width:20px;height:20px;border-radius:50%;
+  border:2.5px solid rgba(255,255,255,.3);border-top-color:#fff;animation:spin .8s linear infinite}
+.morph.done{background:linear-gradient(135deg,#34d399,#0ea472);box-shadow:0 8px 20px rgba(20,180,130,.4)}
+.morph.done::before{content:"";width:22px;height:11px;margin:auto;inset:0;position:absolute;border:0;
+  border-left:3px solid #fff;border-bottom:3px solid #fff;transform:rotate(-45deg) translateY(-5px);animation:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ============ 果冻开关 ============ */
+.jt{position:relative;width:58px;height:32px;border-radius:999px;flex:none;
+  background:rgba(130,140,170,.35);transition:background .35s;touch-action:pan-y}
+.jt::before{content:"";position:absolute;left:4px;top:4px;width:24px;height:24px;border-radius:50%;
+  background:linear-gradient(135deg,#fff,#dfe4f2);box-shadow:0 2px 6px rgba(0,0,0,.3)}
+.jt.on{background:linear-gradient(135deg,#34d399,#0ea472)}
+.jt.on::before{animation:jtR .35s cubic-bezier(.34,1.56,.64,1) forwards}
+.jt:not(.on)::before{animation:jtL .35s cubic-bezier(.34,1.56,.64,1) forwards}
+@keyframes jtR{0%{transform:translateX(0) scaleX(1)}38%{transform:translateX(17px) scaleX(1.5);border-radius:14px}
+  72%{transform:translateX(25px) scaleX(1.14)}88%{transform:translateX(25.5px) scaleX(.94)}100%{transform:translateX(26px) scaleX(1)}}
+@keyframes jtL{0%{transform:translateX(26px) scaleX(1)}38%{transform:translateX(9px) scaleX(1.5);border-radius:14px}
+  72%{transform:translateX(1px) scaleX(1.14)}88%{transform:translateX(.5px) scaleX(.94)}100%{transform:translateX(0) scaleX(1)}}
+
+/* 设置行 */
+.row{display:flex;align-items:center;gap:14px;padding:15px 16px;border-radius:20px}
+.row .r-ic{width:38px;height:38px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:17px;flex:none;
+  background:linear-gradient(135deg,rgba(139,157,255,.3),rgba(224,139,255,.18))}
+.row .r-main{flex:1;min-width:0}
+.row .r-t{font-size:14px;font-weight:600}
+.row .r-d{font-size:11.5px;color:var(--ink3);margin-top:3px;line-height:1.5}
+
+/* ============ 首页 ============ */
+.search{display:flex;align-items:center;gap:10px;padding:13px 16px;border-radius:18px;margin-top:6px}
+.search input{flex:1;background:none;border:0;outline:0;font-size:13.5px;color:var(--ink)}
+.search input::placeholder{color:var(--ink3)}
+.sr-chips{display:flex;gap:8px;margin-top:10px}
+.sr-res{margin-top:12px;display:none;flex-direction:column;gap:8px}
+.sr-res.open{display:flex}
+.sr-item{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:16px}
+.sr-cover{width:42px;height:42px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center;font-size:16px;color:#fff}
+.sr-item .s-t{font-size:13px;font-weight:600}
+.sr-item .s-a{font-size:11px;color:var(--ink3);margin-top:3px}
+.src-tag{font-size:10px;padding:3px 8px;border-radius:8px;flex:none;font-weight:600}
+.src-qq{background:rgba(80,190,255,.18);color:#5ecbff}.src-wy{background:rgba(255,90,90,.16);color:#ff7a7a}
+.src-kg{background:rgba(90,220,160,.16);color:#4ade80}.src-qs{background:rgba(255,160,80,.16);color:#ffb066}
+
+.plat-grid{display:flex;flex-direction:column;gap:10px}
+.plat{display:flex;align-items:center;gap:13px;padding:13px 14px;border-radius:20px}
+.p-logo{width:42px;height:42px;border-radius:14px;flex:none;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:#fff}
+.plat .p-main{flex:1;min-width:0}
+.p-t{font-size:14px;font-weight:700}
+.p-s{font-size:11px;color:var(--ink3);margin-top:3px;transition:color .3s}
+.p-s.ok{color:var(--green)}
+.p-logo.qq{background:linear-gradient(135deg,#3aa2ff,#1e7ae8)}
+.p-logo.wy{background:linear-gradient(135deg,#ff6a6a,#e03e3e)}
+.p-logo.kg{background:linear-gradient(135deg,#3ee08f,#14b866)}
+.p-logo.qs{background:linear-gradient(135deg,#ffb066,#ff8a3c)}
+
+.feed{position:relative;height:246px;border-radius:var(--card-r);overflow:hidden}
+.feed-sk,.feed-real{position:absolute;inset:0;display:flex;flex-direction:column;gap:2px;padding:10px 14px}
+.sk-item,.fd-item{display:flex;align-items:center;gap:12px;padding:9px 0;flex:1}
+.sk-ava{width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.10);flex:none}
+.sk-lines{flex:1;display:flex;flex-direction:column;gap:9px}
+.sk-l{height:11px;border-radius:6px;background:rgba(255,255,255,.10)}
+.w62{width:62%}.w38{width:38%}
+.sk-img{width:52px;height:42px;border-radius:12px;background:rgba(255,255,255,.10);flex:none}
+.sk-shine{position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(105deg,transparent 34%,rgba(255,255,255,.13) 50%,transparent 66%);
+  background-size:260% 100%;animation:sweep 1.5s linear infinite}
+@keyframes sweep{from{background-position:130% 0}to{background-position:-130% 0}}
+.fd-item{opacity:0}
+.fd-cover{width:42px;height:42px;border-radius:14px;flex:none;display:flex;align-items:center;justify-content:center;font-size:15px;color:#fff}
+.fd-item .s-t{font-size:13px;font-weight:600}
+.fd-item .s-a{font-size:11px;color:var(--ink3);margin-top:3px}
+.feed.loaded .feed-sk{opacity:0;transition:opacity .45s .08s;pointer-events:none}
+.feed.loaded .feed-sk .sk-shine{animation:none;opacity:0}
+.feed.loaded .fd-item{animation:rise .5s cubic-bezier(.3,.9,.3,1) both;animation-delay:calc(var(--i)*60ms)}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+.hl-row{display:flex;gap:12px;overflow-x:auto;padding:4px 2px 10px;scrollbar-width:none;scroll-snap-type:x mandatory}
+.hl-row::-webkit-scrollbar{display:none}
+.hl-card{flex:none;width:132px;border-radius:20px;padding:10px;scroll-snap-align:start}
+.hl-cov{height:82px;border-radius:14px;display:flex;align-items:flex-end;padding:8px;font-size:11px;font-weight:700;color:rgba(255,255,255,.9)}
+.hl-t{font-size:12px;font-weight:600;margin-top:8px}
+.hl-s{font-size:10.5px;color:var(--ink3);margin-top:3px}
+
+/* ============ 动效演示页 ============ */
+.fx-card{padding:18px;border-radius:24px;margin-bottom:14px}
+.fx-t{font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px}
+.fx-d{font-size:11.5px;color:var(--ink3);margin-top:5px;line-height:1.65}
+.fx-demo{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}
+.fx-tag{font-size:10px;color:var(--ink3);border:1px solid rgba(150,160,200,.25);padding:3px 9px;border-radius:8px;margin-top:10px;display:inline-block}
+
+/* ============ 曲库：分段标签（毛毛虫下划线） ============ */
+.seg-wrap{position:sticky;top:0;z-index:10;padding:8px 0 10px;background:linear-gradient(var(--bg1) 55%,transparent);margin:-6px -2px 0}
+.seg{position:relative;display:flex;padding:5px;border-radius:18px}
+.seg-ink{position:absolute;top:5px;bottom:5px;border-radius:13px;left:5px;width:80px;
+  background:linear-gradient(135deg,rgba(139,157,255,.4),rgba(224,139,255,.24));box-shadow:inset 0 1px 0 rgba(255,255,255,.4)}
+.seg-t{flex:1;position:relative;z-index:2;font-size:13.5px;font-weight:500;color:var(--ink3);padding:9px 0;transition:color .3s,font-weight .3s}
+.seg-t.active{color:var(--ink);font-weight:700}
+.seg-view{overflow:hidden;margin:4px -2px 0;touch-action:pan-y;cursor:grab}
+.seg-pages{display:flex;width:300%}
+.seg-p{width:calc(100%/3);padding:4px 2px;user-select:none}
+.mini{display:flex;align-items:center;gap:11px;padding:11px 13px;border-radius:18px;margin-bottom:9px}
+.mini .m-c{width:40px;height:40px;border-radius:13px;flex:none;display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff}
+.mini .m-t{font-size:13px;font-weight:600}
+.mini .m-s{font-size:10.5px;color:var(--ink3);margin-top:3px}
+.merge-note{font-size:11.5px;color:var(--ink3);line-height:1.7;padding:12px 14px;border-radius:16px;background:rgba(139,157,255,.08);margin:4px 0 12px}
+
+/* ============ 详情页（吸顶超大标题） ============ */
+.detail{position:absolute;inset:0;z-index:60;background:var(--bg1);transform:translateY(100%);transition:transform .42s cubic-bezier(.34,1.3,.64,1);visibility:hidden}
+.detail.open{transform:none;visibility:visible}
+.d-nav{position:absolute;top:0;left:0;right:0;height:92px;z-index:5;display:flex;align-items:flex-end;padding:0 16px 10px;opacity:0;transition:opacity .2s}
+.d-nav.solid{opacity:1}
+.d-nav::before{content:"";position:absolute;inset:0;background:rgba(12,15,28,.55);backdrop-filter:blur(20px) saturate(160%);-webkit-backdrop-filter:blur(20px) saturate(160%);opacity:0;transition:opacity .25s}
+.d-nav.solid::before{opacity:1}
+.d-back{position:relative;z-index:2;width:38px;height:38px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-size:19px;color:#fff;background:rgba(0,0,0,.28);backdrop-filter:blur(10px)}
+.d-nav-t{position:relative;z-index:2;margin:0 auto;font-size:15px;font-weight:700;color:#fff;opacity:0;transition:opacity .2s}
+.d-nav.solid .d-nav-t{opacity:1}
+.d-nav .sp{width:38px}
+.d-scroll{position:absolute;inset:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none}
+.d-scroll::-webkit-scrollbar{display:none}
+.d-hero{position:relative;height:330px;display:flex;align-items:flex-end;padding:0 22px 24px;overflow:visible}
+.d-hero-img{position:absolute;inset:0;border-radius:0 0 34px 34px;overflow:hidden;
+  background:linear-gradient(150deg,#2b3a86 0%,#6d4b9e 45%,#c76a9a 80%,#e8a06b 100%);will-change:transform}
+.d-hero-img::after{content:"";position:absolute;inset:0;background:radial-gradient(70% 50% at 70% 20%,rgba(255,255,255,.22),transparent 60%)}
+.d-hero-dim{position:absolute;inset:0;border-radius:0 0 34px 34px;background:#000;opacity:0;pointer-events:none}
+.d-title{position:absolute;left:22px;bottom:24px;font-size:34px;font-weight:800;color:#fff;letter-spacing:.02em;
+  text-shadow:0 4px 24px rgba(0,0,0,.4);will-change:transform,opacity;transform-origin:left bottom;white-space:nowrap}
+.d-sub{position:absolute;left:23px;bottom:14px;font-size:11px;color:rgba(255,255,255,.75)}
+.d-body{padding:20px 18px 60px}
+.d-h2{font-size:15px;font-weight:700;margin-bottom:12px}
+.d-track{display:flex;align-items:center;gap:12px;padding:10px 4px}
+.d-n{width:22px;text-align:center;font-size:12px;color:var(--ink3);font-weight:600}
+.d-track .m-t{font-size:13.5px;font-weight:600}
+.d-track .m-s{font-size:11px;color:var(--ink3);margin-top:3px}
+.d-track .d-hb{margin-left:auto;font-size:11px;color:var(--ink3)}
+
+/* ============ 删除确认对话框 ============ */
+.dlg-wrap{position:absolute;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;visibility:hidden}
+.dlg-wrap.open{visibility:visible}
+.dlg-mask{position:absolute;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px);
+  opacity:0;transition:opacity .2s}
+.dlg-wrap.open .dlg-mask{opacity:1}
+.dialog{position:relative;width:290px;padding:26px 22px 18px;text-align:center;
+  transform:scale(.8);opacity:0;transition:transform .26s cubic-bezier(.34,1.56,.64,1),opacity .2s}
+.dlg-wrap.open .dialog{transform:scale(1);opacity:1}
+.dlg-wrap.closing .dialog{transform:scale(.9);opacity:0;transition:transform .2s,opacity .18s}
+.dlg-t{font-size:16px;font-weight:700}
+.dlg-d{font-size:12px;color:var(--ink2);margin-top:9px;line-height:1.6}
+.dlg-btns{display:flex;gap:10px;margin-top:20px}
+.dlg-btns .btn{flex:1;justify-content:center}
+
+/* ============ 下拉菜单（右上角锚定） ============ */
+.dropdown{position:absolute;top:96px;right:18px;z-index:85;width:180px;padding:7px;border-radius:18px;
+  transform-origin:top right;transform:scale(.85);opacity:0;pointer-events:none;
+  transition:transform .18s cubic-bezier(.3,.9,.3,1.2),opacity .15s}
+.dropdown.open{transform:scale(1);opacity:1;pointer-events:auto}
+.dd-i{display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:12px;font-size:13px;font-weight:500;
+  opacity:0;transform:translateY(6px)}
+.dropdown.open .dd-i{animation:ddIn .22s ease forwards;animation-delay:calc(var(--i)*8ms)}
+.dd-i:active{background:rgba(255,255,255,.08)}
+@keyframes ddIn{to{opacity:1;transform:none}}
+.dd-sep{height:1px;margin:5px 8px;background:rgba(255,255,255,.08)}
+
+/* ============ 底部弹窗 ============ */
+.sheet-wrap{position:absolute;inset:0;z-index:70;visibility:hidden}
+.sheet-wrap.open{visibility:visible}
+.sheet-mask{position:absolute;inset:0;background:rgba(0,0,0,.35);opacity:0;transition:opacity .3s}
+.sheet-wrap.open .sheet-mask{opacity:1}
+.sheet{position:absolute;left:0;right:0;bottom:0;padding:10px 20px 30px;border-radius:30px 30px 0 0;
+  transform:translateY(102%);will-change:transform}
+.sheet-grab{width:40px;height:5px;border-radius:3px;background:rgba(255,255,255,.22);margin:4px auto 14px;touch-action:none;cursor:grab}
+.sh-h{font-size:15px;font-weight:700;margin-bottom:12px}
+.q-list{display:flex;flex-direction:column;gap:8px;margin-bottom:18px}
+.q-i{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:16px;font-size:13px;font-weight:600}
+.q-i.sel{background:linear-gradient(135deg,rgba(139,157,255,.28),rgba(224,139,255,.16));box-shadow:inset 0 1px 0 rgba(255,255,255,.3)}
+.q-i .q-d{font-size:10.5px;color:var(--ink3);font-weight:400}
+.vip{margin-left:auto;font-size:9.5px;padding:3px 7px;border-radius:7px;background:rgba(255,190,90,.16);color:#ffcf8a;flex:none}
+.q-ok{margin-left:auto;color:var(--green);font-weight:700;flex:none}
+.sh-h2{font-size:12.5px;font-weight:700;color:var(--ink2);margin:2px 0 8px}
+
+/* ============ 桌面歌词（悬浮窗模拟） ============ */
+.lyric{position:absolute;left:24px;top:120px;z-index:95;width:270px;padding:10px 14px;border-radius:18px;
+  cursor:grab;touch-action:none;user-select:none;display:none}
+.lyric.show{display:block}
+.ly-t{font-size:11px;color:var(--ink3);display:flex;justify-content:space-between;margin-bottom:3px}
+.ly-t b{color:var(--accent);font-weight:600}
+.ly-l{font-size:13.5px;font-weight:700;letter-spacing:.02em}
+.nowp{position:absolute;left:18px;right:18px;bottom:102px;z-index:55;padding:10px 14px;border-radius:16px;display:none}
+.nowp.on{display:block}
+.np-t{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.np-a{font-size:11px;color:var(--ink3);margin-top:2px}
+.sr-item{cursor:pointer}
+.sr-item.playing{outline:1px solid rgba(139,157,255,.55)}
+
+/* 轻提示动画 */
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+</style>
+</head>
+<body>
+
+<p class="note"><b>MeloGlass · 液态玻璃音乐 APP v0.1（C++ 核心 + WebView）</b><br>
+搜索 / 播放链 / 扫码登录全部由端上 C++（NDK）执行：网易云·QQ·酷狗游客可搜可播；汽水公开歌单/SEO 可解析，无签名搜不到。QQ 扫码若一直等待请改贴 Cookie，酷狗请贴网页版 Cookie。</p>
+
+<div class="stage">
+<div class="phone" id="phone">
+  <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+
+  <div class="app" id="app">
+    <div class="statusbar"><i>9:41</i><span>●●●</span><i>5G ▮▮▮</i></div>
+
+    <header class="topbar">
+      <div class="tb-logo glass">◈ <em>MeloGlass</em></div>
+      <button class="tb-btn glass" id="menuBtn">⋯</button>
+    </header>
+
+    <main class="pages">
+
+      <!-- ============ 首页 ============ -->
+      <section class="page active" data-page="home">
+        <div class="search glass">🔍<input id="srInput" placeholder="搜索歌曲 / 歌手，聚合全平台结果" autocomplete="off"></div>
+        <div class="sr-chips">
+          <button class="chip on" id="chipAll">全平台聚合</button>
+          <button class="chip" data-src="qq">仅 QQ 音乐</button>
+          <button class="chip" data-src="wy">仅网易云</button>
+          <button class="chip" data-src="kg">仅酷狗</button>
+          <button class="chip" data-src="qs">仅汽水</button>
+        </div>
+        <div class="sr-res" id="srRes"></div>
+
+        <div class="sec-t">平台接入 <small>点「连接」出官方扫码；QQ/酷狗可改贴 Cookie</small></div>
+        <div class="plat-grid">
+          <div class="plat glass">
+            <div class="p-logo qq">Q</div>
+            <div class="p-main"><div class="p-t">QQ音乐</div><div class="p-s" id="st-qq">未连接 · 登录后同步歌单</div></div>
+            <button class="morph" data-plat="qq"><span class="m-tx">连 接</span></button>
+          </div>
+          <div class="plat glass">
+            <div class="p-logo wy">云</div>
+            <div class="p-main"><div class="p-t">网易云音乐</div><div class="p-s" id="st-wy">未连接 · 登录后同步歌单</div></div>
+            <button class="morph" data-plat="wy"><span class="m-tx">连 接</span></button>
+          </div>
+          <div class="plat glass">
+            <div class="p-logo kg">K</div>
+            <div class="p-main"><div class="p-t">酷狗音乐</div><div class="p-s" id="st-kg">未连接 · 登录后同步歌单</div></div>
+            <button class="morph" data-plat="kg"><span class="m-tx">连 接</span></button>
+          </div>
+          <div class="plat glass">
+            <div class="p-logo qs">汽</div>
+            <div class="p-main"><div class="p-t">汽水音乐</div><div class="p-s" id="st-qs">未连接 · 登录后同步歌单</div></div>
+            <button class="morph" data-plat="qs"><span class="m-tx">连 接</span></button>
+          </div>
+        </div>
+
+        <div class="sec-t">新歌速递 <small>骨架屏 → 错落浮现</small>
+          <button class="chip" id="reloadBtn">↻ 重新加载</button></div>
+        <div class="feed glass" id="feed">
+          <div class="feed-sk">
+            <div class="sk-item"><div class="sk-ava"></div><div class="sk-lines"><i class="sk-l w62"></i><i class="sk-l w38"></i></div><div class="sk-img"></div></div>
+            <div class="sk-item"><div class="sk-ava"></div><div class="sk-lines"><i class="sk-l w62"></i><i class="sk-l w38"></i></div><div class="sk-img"></div></div>
+            <div class="sk-item"><div class="sk-ava"></div><div class="sk-lines"><i class="sk-l w62"></i><i class="sk-l w38"></i></div><div class="sk-img"></div></div>
+            <div class="sk-shine"></div>
+          </div>
+          <div class="feed-real">
+            <div class="fd-item" style="--i:0"><div class="fd-cover" style="background:linear-gradient(135deg,#3aa2ff,#7a5cff)">♪</div><div><div class="s-t">晚风信箱</div><div class="s-a">陈默 · QQ音乐 · 无损</div></div></div>
+            <div class="fd-item" style="--i:1"><div class="fd-cover" style="background:linear-gradient(135deg,#ff6a8a,#e0447a)">♫</div><div><div class="s-t">雾里行走</div><div class="s-a">苏叶 · 网易云 · Hi-Res</div></div></div>
+            <div class="fd-item" style="--i:2"><div class="fd-cover" style="background:linear-gradient(135deg,#2dd4bf,#0e9f8a)">♬</div><div><div class="s-t">城南旧灯</div><div class="s-a">周屿 · 酷狗 · 无损</div></div></div>
+          </div>
+        </div>
+
+        <div class="sec-t">为你推荐 <small>点封面进详情页</small></div>
+        <div class="hl-row">
+          <div class="hl-card glass" data-open-detail><div class="hl-cov" style="background:linear-gradient(150deg,#2b3a86,#c76a9a)">深夜电台</div><div class="hl-t">深夜电台 Vol.7</div><div class="hl-s">32 首 · 缓私域</div></div>
+          <div class="hl-card glass" data-open-detail><div class="hl-cov" style="background:linear-gradient(150deg,#0f766e,#84ccab)">雨声耳语</div><div class="hl-t">雨声耳语</div><div class="hl-s">24 首 · 助眠</div></div>
+          <div class="hl-card glass" data-open-detail><div class="hl-cov" style="background:linear-gradient(150deg,#b45309,#f59e6b)">落日公路</div><div class="hl-t">落日公路</div><div class="hl-s">28 首 · 驾驶</div></div>
+        </div>
+      </section>
+
+      <!-- ============ 动效演示 ============ -->
+      <section class="page" data-page="fx">
+        <div class="sec-t">动效演示间 <small>全部按你给的参数实现</small></div>
+
+        <div class="fx-card glass">
+          <div class="fx-t">Submit Morph · 三段按钮</div>
+          <div class="fx-d">文字淡出 → 收缩成圆形 + 旋转加载环（1.2s）→ 变绿画对勾（1s）→ 恢复。收缩 300ms，ease-in-out。</div>
+          <div class="fx-demo">
+            <button class="morph" data-morph id="fxMorph"><span class="m-tx">提 交</span></button>
+            <button class="morph" data-morph style="height:38px;font-size:12px"><span class="m-tx">小尺寸也可以</span></button>
+          </div>
+        </div>
+
+        <div class="fx-card glass">
+          <div class="fx-t">果冻开关 · Jelly Toggle</div>
+          <div class="fx-d">圆点滑向另一端，途中横向拉长成胶囊，到底回弹；底色灰→绿。350ms，带回弹弹簧曲线。</div>
+          <div class="fx-demo" style="gap:22px">
+            <div class="jt"></div><div class="jt on"></div>
+          </div>
+        </div>
+
+        <div class="fx-card glass">
+          <div class="fx-t">删除确认对话框</div>
+          <div class="fx-d">遮罩淡入 200ms + 背景 9px 高斯模糊；对话框 scale 0.8→1，cubic-bezier(.34,1.56,.64,1) 约 260ms 弹性过冲；取消时 scale→0.9 淡出、模糊解除。绝不啪一下直出。</div>
+          <div class="fx-demo"><button class="btn danger" id="fxDelBtn">删除歌单《夜间飞行》</button></div>
+        </div>
+
+        <div class="fx-card glass">
+          <div class="fx-t">下拉操作菜单</div>
+          <div class="fx-d">锚定右上角 ⋯ 正下方右对齐，transform-origin: top right；scale 0.85→1 + 淡入 180ms；菜单项按 8ms 间隔错落浮现；点外部收回。背景不变暗。← 点右上角「⋯」触发</div>
+        </div>
+
+        <div class="fx-card glass">
+          <div class="fx-t">底部弹窗 · 可拖拽</div>
+          <div class="fx-d">弹簧升起约 400ms，背后页面缩到 0.92 + 圆角 + 压暗；上拖有阻力，下拖超 1/3 或快速一甩关闭，否则弹回。</div>
+          <div class="fx-demo"><button class="btn" id="fxSheetBtn">打开（音质选择）</button></div>
+        </div>
+      </section>
+
+      <!-- ============ 曲库 ============ -->
+      <section class="page" data-page="lib">
+        <div class="seg-wrap">
+          <div class="seg glass" id="seg">
+            <div class="seg-ink" id="segInk"></div>
+            <button class="seg-t active" data-i="0">发现</button>
+            <button class="seg-t" data-i="1">歌单</button>
+            <button class="seg-t" data-i="2">我的</button>
+          </div>
+        </div>
+        <div class="seg-view" id="segView">
+          <div class="seg-pages" id="segPages">
+            <div class="seg-p">
+              <div class="mini glass"><div class="m-c" style="background:linear-gradient(135deg,#8b5cf6,#d946ef)">🔥</div><div><div class="m-t">飙升新歌榜</div><div class="m-s">聚合四平台 · 每小时更新</div></div></div>
+              <div class="mini glass"><div class="m-c" style="background:linear-gradient(135deg,#0ea5e9,#22d3ee)">🌊</div><div><div class="m-t">华语速爆</div><div class="m-s">QQ × 网易云 双源匹配</div></div></div>
+              <div class="mini glass"><div class="m-c" style="background:linear-gradient(135deg,#f59e0b,#ef4444)">🎯</div><div><div class="m-t">私荐 FM</div><div class="m-s">按你的口味跨平台生成</div></div></div>
+              <div class="mini glass"><div class="m-c" style="background:linear-gradient(135deg,#10b981,#34d399)">💤</div><div><div class="m-t">白噪音·专注</div><div class="m-s">汽水源 · 无损</div></div></div>
+            </div>
+            <div class="seg-p">
+              <div class="merge-note">◈ <b>整合歌单</b>：四个平台登录后，同名/同 ID 歌曲自动<b>合并去重</b>（保留最高音质源），本地保存。<b>待你确认：</b>合并规则与保存位置。</div>
+              <div class="mini glass"><div class="m-c" style="background:linear-gradient(150deg,#2b3a86,#c76a9a)">◈</div><div><div class="m-t">我的整合歌单 · 夜间飞行</div><div class="m-s">32 首 · 来自 QQ/网易云/酷狗</div></div>
+                <button class="btn danger" style="height:34px;padding:0 13px;font-size:11.5px" data-del-real>删除</button></div>
+              <div class="mini glass"><div class="m-c" style="background:linear-gradient(135deg,#3aa2ff,#1e7ae8)">Q</div><div><div class="m-t">QQ音乐 · 我喜欢</div><div class="m-s">已同步 · 128 首</div></div></div>
+              <div class="mini glass"><div class="m-c" style="background:linear-gradient(135deg,#ff6a6a,#e03e3e)">云</div><div><div class="m-t">网易云 · 私人FM收藏</div><div class="m-s">已同步 · 86 首</div></div></div>
+              <button class="btn" id="mergeBtn" style="width:100%;margin-top:6px" data-morph><span class="m-tx">⟲ 重新合并去重</span></button>
+            </div>
+            <div class="seg-p">
+              <div class="mini glass"><div class="m-c" style="background:linear-gradient(135deg,#64748b,#334155)">⬇</div><div><div class="m-t">已下载</div><div class="m-s">本地缓存 · 1.2 GB</div></div></div>
+              <div class="mini glass"><div class="m-c" style="background:linear-gradient(135deg,#8b5cf6,#6366f1)">🕘</div><div><div class="m-t">最近播放</div><div class="m-s">跨平台合并记录</div></div></div>
+              <div class="mini glass"><div class="m-c" style="background:linear-gradient(135deg,#f43f5e,#fb7185)">♥</div><div><div class="m-t">红心歌曲</div><div class="m-s">四平台红心聚合 · 204 首</div></div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 我的 ============ -->
+      <section class="page" data-page="me">
+        <div class="sec-t">我的 <small>设置即演示</small></div>
+        <div class="row glass" style="margin-bottom:12px">
+          <div class="r-ic" style="background:linear-gradient(135deg,#8b9dff,#e08bff);color:#fff;font-weight:800">M</div>
+          <div class="r-main"><div class="r-t">未登录 · 游客模式</div><div class="r-d">登录 MeloGlass 账号后跨设备同步（待确认：要不要自建账号体系）</div></div>
+          <button class="morph" data-morph id="meLogin"><span class="m-tx">登录</span></button>
+        </div>
+
+        <div class="row glass">
+          <div class="r-ic">🌙</div>
+          <div class="r-main"><div class="r-t">深色模式</div><div class="r-d">浅色 / 深色两套液态玻璃（待确认默认哪套）</div></div>
+          <div class="jt on" id="themeJt"></div>
+        </div>
+        <div class="row glass" style="margin-top:10px">
+          <div class="r-ic">🧊</div>
+          <div class="r-main"><div class="r-t">液态玻璃效果</div><div class="r-d">blur 28px · saturate 170% · 白 10% · 1px 亮边 + 边缘折射。低端机建议关闭</div></div>
+          <div class="jt on" id="glassJt"></div>
+        </div>
+        <div class="row glass" style="margin-top:10px">
+          <div class="r-ic">🎤</div>
+          <div class="r-main"><div class="r-t">桌面歌词</div><div class="r-d">安卓悬浮窗（SYSTEM_ALERT_WINDOW，需授权），可拖动（待确认样式/双行/锁定）</div></div>
+          <div class="jt" id="lyricJt"></div>
+        </div>
+        <div class="row glass" style="margin-top:10px">
+          <div class="r-ic">⚡</div>
+          <div class="r-main"><div class="r-t">流畅优先模式</div><div class="r-d">减少动效层数，保证 60fps（待确认：120Hz 机型要不要拉满）</div></div>
+          <div class="jt"></div>
+        </div>
+
+        <div class="sec-t">音质 <small>点开看完整档位</small></div>
+        <button class="row glass" id="qSheetBtn" style="width:100%;text-align:left">
+          <div class="r-ic">🎧</div>
+          <div class="r-main"><div class="r-t">当前音质：无损 FLAC</div><div class="r-d">实际可放音质受各平台版权与会员限制（待确认取源规则）</div></div>
+          <span style="color:var(--ink3)">›</span>
+        </button>
+      </section>
+    </main>
+
+    <!-- 底部导航 -->
+    <nav class="tabbar glass" id="tabbar">
+      <div class="pill" id="pill"></div>
+      <button class="tab active" data-tab="home"><span class="ic">◉</span><span class="tx">首页</span></button>
+      <button class="tab" data-tab="fx"><span class="ic">✦</span><span class="tx">动效</span></button>
+      <button class="tab" data-tab="lib"><span class="ic">♫</span><span class="tx">曲库</span></button>
+      <button class="tab" data-tab="me"><span class="ic">◍</span><span class="tx">我的</span></button>
+    </nav>
+  </div>
+
+  <!-- 下拉菜单 -->
+  <div class="dropdown glass" id="dropdown">
+    <button class="dd-i" style="--i:0">▶ 播放全部</button>
+    <button class="dd-i" style="--i:1">♥ 收藏歌单</button>
+    <button class="dd-i" style="--i:2">↗ 分享</button>
+    <div class="dd-sep"></div>
+    <button class="dd-i" style="--i:3">⚙ 歌单信息</button>
+  </div>
+
+  <!-- 登录弹窗 -->
+  <div class="dlg-wrap" id="loginWrap">
+    <div class="dlg-mask" id="loginMask"></div>
+    <div class="dialog glass" style="width:310px;text-align:center">
+      <div class="dlg-t" id="loginTitle">登录</div>
+      <div class="dlg-d" id="loginHint">用对应官方 App 扫码</div>
+      <img id="loginQr" alt="qr" style="width:188px;height:188px;margin:14px auto 8px;border-radius:12px;background:#fff;display:none;object-fit:contain">
+      <div id="loginStatus" style="font-size:12px;color:var(--ink2);min-height:18px">准备中…</div>
+      <textarea id="loginCookie" placeholder="扫不了就粘贴官方网页 Cookie（只存本机 127.0.0.1 代理）" style="width:100%;height:64px;margin-top:10px;border-radius:12px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.18);color:inherit;padding:8px 10px;resize:none;font-size:11px"></textarea>
+      <div class="dlg-btns">
+        <button class="btn" id="loginCancel">取消</button>
+        <button class="btn" id="loginCookieBtn">用 Cookie 登录</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 删除确认 -->
+  <div class="dlg-wrap" id="dlgWrap">
+    <div class="dlg-mask" id="dlgMask"></div>
+    <div class="dialog glass">
+      <div class="dlg-t">删除歌单？</div>
+      <div class="dlg-d">《夜间飞行》将被删除且无法恢复，<br>共 32 首歌曲。</div>
+      <div class="dlg-btns">
+        <button class="btn" id="dlgCancel">取消</button>
+        <button class="btn danger" id="dlgOk">删除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 底部弹窗 -->
+  <div class="sheet-wrap" id="sheetWrap">
+    <div class="sheet-mask" id="sheetMask"></div>
+    <div class="sheet glass" id="sheet">
+      <div class="sheet-grab" id="sheetGrab"></div>
+      <div class="sh-h">音质选择</div>
+      <div class="q-list" id="qList">
+        <div class="q-i glass" data-q="标准">标准 128kbps<span class="q-d">省流量</span></div>
+        <div class="q-i glass" data-q="高品">高品 320kbps<span class="q-d">MP3 上限</span></div>
+        <div class="q-i glass sel" data-q="无损">无损 FLAC<span class="q-ok">✓</span></div>
+        <div class="q-i glass" data-q="Hi-Res">Hi-Res 金标认证<span class="vip">会员</span></div>
+        <div class="q-i glass" data-q="全景声">杜比全景声<span class="vip">会员 · 部分曲目</span></div>
+      </div>
+      <div class="sh-h2">正在播放 · 队列</div>
+      <div class="mini glass"><div class="m-c" style="background:linear-gradient(135deg,#3aa2ff,#7a5cff)">♪</div><div><div class="m-t">晚风信箱</div><div class="m-s">陈默 · QQ音乐</div></div><span class="q-ok">♪</span></div>
+      <div class="mini glass"><div class="m-c" style="background:linear-gradient(135deg,#ff6a8a,#e0447a)">♫</div><div><div class="m-t">雾里行走</div><div class="m-s">苏叶 · 网易云</div></div></div>
+    </div>
+  </div>
+
+  <!-- 详情页 -->
+  <div class="detail" id="detail">
+    <div class="d-nav" id="dNav">
+      <button class="d-back" id="dBack">‹</button>
+      <span class="d-nav-t">深夜电台 Vol.7</span><span class="sp"></span>
+    </div>
+    <div class="d-scroll" id="dScroll">
+      <div class="d-hero" id="dHero">
+        <div class="d-hero-img" id="dHeroImg"></div>
+        <div class="d-hero-dim" id="dHeroDim"></div>
+        <h1 class="d-title" id="dTitle">深夜电台 Vol.7</h1>
+        <div class="d-sub" id="dSub">32 首 · 缓私域 · 已整合 3 个平台</div>
+      </div>
+      <div class="d-body">
+        <div class="d-h2">曲目列表</div>
+        <div id="dTracks"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 桌面歌词悬浮条 -->
+  <div class="lyric glass" id="lyric">
+    <div class="ly-t"><b>♪ 晚风信箱 · 陈默</b><span>拖动</span></div>
+    <div class="ly-l">晚风把信投进没有人海的黄昏</div>
+  </div>
+
+  <div class="toast glass" id="toast"></div>
+  <audio id="player" preload="none"></audio>
+  <div class="nowp glass" id="nowp">
+    <div class="np-t" id="npTitle">未在播放</div>
+    <div class="np-a" id="npArtist">点搜索结果即可试听</div>
+  </div>
+</div>
+</div>
+
+<script src="qrcode.min.js"></script>
+<script src="api.js"></script>
+<script>
+/* ================= 工具 ================= */
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const phone=$('#phone'), app=$('#app');
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+const lerp=(a,b,k)=>a+(b-a)*k;
+/* 带轻微回弹的 ease-out-back（弹簧停稳感） */
+const backOut=k=>{const s=1.35;k-=1;return k*k*((s+1)*k+s)+1};
+const easeIO=k=>k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;
+function tween(from,to,dur,ease,cb,done){
+  const t0=performance.now();
+  (function f(t){const k=clamp((t-t0)/dur,0,1);cb(lerp(from,to,ease(k)));if(k<1)requestAnimationFrame(f);else done&&done()})(t0);
+}
+let toastTimer;
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2200)}
+
+/* ================= 1. 底部导航：水滴胶囊 ================= */
+const pill=$('#pill'), tabs=$$('.tab');
+let curTab='home';
+function movePill(tab,animate=true){
+  const r=tab.getBoundingClientRect(), pr=$('#tabbar').getBoundingClientRect();
+  const nl=r.left-pr.left, nw=r.width-12;
+  const oldL=parseFloat(pill.style.left)||nl, oldW=parseFloat(pill.style.width)||nw;
+  if(!animate){Object.assign(pill.style,{left:nl+'px',width:nw+'px'});return}
+  const dist=Math.abs(nl-oldL);
+  /* 前沿先到、后沿慢半拍：中途宽度被拉长 + 高度略扁，最后弹簧停稳 */
+  pill.animate([
+    {left:oldL+'px',width:oldW+'px',transform:'scaleY(1)',offset:0},
+    {left:nl+'px',width:(oldW+dist)+'px',transform:'scaleY(.86)',offset:.42},
+    {left:nl+'px',width:Math.max(30,nw-6)+'px',transform:'scaleY(1.05)',offset:.8},
+    {left:nl+'px',width:nw+'px',transform:'scaleY(1)',offset:1}
+  ],{duration:400,easing:'cubic-bezier(.34,1.3,.64,1)'});
+  pill.style.left=nl+'px';pill.style.width=nw+'px';
+  /* 图标先缩小再弹回 */
+  tab.querySelector('.ic').animate([
+    {transform:'scale(1)'},{transform:'scale(.7)',offset:.35},{transform:'scale(1.14)',offset:.72},{transform:'scale(1)'}
+  ],{duration:400,easing:'cubic-bezier(.34,1.4,.64,1)'});
+}
+tabs.forEach(t=>t.addEventListener('click',()=>{
+  if(t.dataset.tab===curTab)return;
+  tabs.forEach(x=>x.classList.toggle('active',x===t));
+  $$('.page').forEach(p=>p.classList.toggle('active',p.dataset.page===t.dataset.tab));
+  curTab=t.dataset.tab;movePill(t);
+  setTimeout(()=>movePill(t,false),420); /* 动画结束后把样式钉准 */
+}));
+requestAnimationFrame(()=>movePill($('.tab.active'),false));
+
+/* ================= 2. Submit Morph（通用三段按钮） ================= */
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-morph]');
+  if(!b||b.dataset.plat||b.classList.contains('busy')||b.classList.contains('done'))return;
+  b.style.width=b.offsetWidth+'px';           /* 锁定当前宽度让收缩可过渡 */
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    b.classList.add('busy');                  /* 文字淡出 + 收缩成圆 + 加载环 */
+    setTimeout(()=>{
+      b.classList.remove('busy');b.classList.add('done');   /* 变绿 + 对勾 */
+      setTimeout(()=>{
+        b.classList.remove('done');b.style.width='';
+        b.dispatchEvent(new CustomEvent('morphend',{bubbles:true}));
+      },1000);
+    },1200);
+  }));
+});
+/* 平台「连接」走真实扫码，不再用假 Morph 冒充登录 */
+
+/* ================= 3. 果冻开关（通用） + 特殊开关 ================= */
+$$('.jt').forEach(j=>j.addEventListener('click',()=>{
+  j.classList.toggle('on');
+  j.dispatchEvent(new CustomEvent('jtchange',{detail:j.classList.contains('on'),bubbles:true}));
+}));
+$('#themeJt').addEventListener('jtchange',e=>document.documentElement.classList.toggle('light',!e.detail));
+$('#glassJt').addEventListener('jtchange',e=>phone.classList.toggle('noglass',!e.detail));
+$('#lyricJt').addEventListener('jtchange',e=>{
+  $('#lyric').classList.toggle('show',e.detail);
+  toast(e.detail?'桌面歌词已开启（模拟悬浮窗）':'桌面歌词已关闭');
+});
+
+/* ================= 4. 下拉菜单（右上角锚定） ================= */
+const dd=$('#dropdown');
+$('#menuBtn').addEventListener('click',e=>{e.stopPropagation();dd.classList.toggle('open')});
+document.addEventListener('click',e=>{if(!dd.contains(e.target))dd.classList.remove('open')});
+dd.addEventListener('click',e=>{const i=e.target.closest('.dd-i');if(i){dd.classList.remove('open');toast('已执行：'+i.textContent.trim())}});
+
+/* ================= 5. 删除确认对话框 ================= */
+const dlg=$('#dlgWrap');
+function openDlg(){$('#app').classList.add('pushed');dlg.classList.remove('closing');dlg.classList.add('open')}
+function closeDlg(){dlg.classList.add('closing');setTimeout(()=>{dlg.classList.remove('open','closing');$('#app').classList.remove('pushed')},210)}
+$('#fxDelBtn').addEventListener('click',openDlg);
+$$('[data-del-real]').forEach(b=>b.addEventListener('click',openDlg));
+$('#dlgCancel').addEventListener('click',closeDlg);
+$('#dlgMask').addEventListener('click',closeDlg);
+$('#dlgOk').addEventListener('click',()=>{closeDlg();setTimeout(()=>toast('《夜间飞行》已删除（演示）'),240)});
+
+/* ================= 6. 底部弹窗（弹簧 + 拖拽 + 阻力） ================= */
+const sw=$('#sheetWrap'), sheet=$('#sheet'), appEl=$('#app');
+let sheetOpen=false;
+function openSheet(){sheetOpen=true;sw.classList.add('open');appEl.classList.add('pushed');
+  sheet.style.transition='transform .4s cubic-bezier(.34,1.3,.64,1)';sheet.style.transform='translateY(0)'}
+function closeSheet(){sheetOpen=false;sw.classList.remove('open');appEl.classList.remove('pushed');
+  sheet.style.transition='transform .4s cubic-bezier(.5,0,.75,.4)';sheet.style.transform='translateY(102%)'}
+$('#fxSheetBtn').addEventListener('click',openSheet);
+$('#qSheetBtn').addEventListener('click',openSheet);
+$('#sheetMask').addEventListener('click',closeSheet);
+$$('#qList .q-i').forEach(q=>q.addEventListener('click',()=>{
+  $$('#qList .q-i').forEach(x=>{x.classList.remove('sel');x.querySelector('.q-ok')?.remove()});
+  q.classList.add('sel');const ok=document.createElement('span');ok.className='q-ok';ok.textContent='✓';q.appendChild(ok);
+  toast('音质已切换：'+q.dataset.q+'（实际受平台版权与会员限制）');
+}));
+/* 拖拽：上拖有阻力(dy*0.18)，下拖超 1/3 或快速一甩关闭 */
+let sy=0,dy=0,lastY=0,lastT=0,vel=0,dragging=false;
+$('#sheetGrab').addEventListener('pointerdown',e=>{
+  dragging=true;sy=e.clientY;dy=0;lastY=e.clientY;lastT=performance.now();
+  sheet.style.transition='none';$('#sheetGrab').setPointerCapture(e.pointerId);
+});
+$('#sheetGrab').addEventListener('pointermove',e=>{
+  if(!dragging)return;dy=e.clientY-sy;
+  const v=(e.clientY-lastY)/Math.max(1,performance.now()-lastT);lastY=e.clientY;lastT=performance.now();
+  vel=vel*.6+v*.4;
+  sheet.style.transform='translateY('+(dy>0?dy:dy*0.18)+'px)';
+});
+$('#sheetGrab').addEventListener('pointerup',()=>{
+  if(!dragging)return;dragging=false;
+  const H=sheet.offsetHeight;
+  if(dy>H/3||vel>0.7){sheet.style.transition='transform .4s cubic-bezier(.5,0,.75,.4)';sheet.style.transform='translateY(102%)';
+    sw.classList.remove('open');appEl.classList.remove('pushed');sheetOpen=false}
+  else{sheet.style.transition='transform .4s cubic-bezier(.34,1.3,.64,1)';sheet.style.transform='translateY(0)'}
+});
+
+/* ================= 7. 骨架屏 → 错落浮现 ================= */
+const feed=$('#feed');
+function loadFeed(){feed.classList.remove('loaded');
+  clearTimeout(loadFeed.t);loadFeed.t=setTimeout(()=>feed.classList.add('loaded'),1900)}
+loadFeed();
+$('#reloadBtn').addEventListener('click',loadFeed);
+
+/* ================= 8. 分段标签：毛毛虫下划线 + 左右滑 ================= */
+const seg=$('#seg'), segT=$$('.seg-t'), ink=$('#segInk'), segView=$('#segView'), segPages=$('#segPages');
+let segI=0, segP=0;   /* segP: 浮点页位置 0~2 */
+const segRect=()=>segView.getBoundingClientRect();
+function inkTarget(i){return segT[i].getBoundingClientRect().left-seg.getBoundingClientRect().left}
+function inkW(i){return segT[i].getBoundingClientRect().width-4}
+function setSeg(p,stretch=true){  /* p 为浮点；下划线实时跟手，中途先伸长 */
+  segP=clamp(p,0,2);
+  segPages.style.transform='translateX('+(-segP*segRect().width)+'px)';
+  const i0=Math.floor(segP), i1=Math.min(2,i0+1), f=segP-i0;
+  const L=lerp(inkTarget(i0),inkTarget(i1),f), W=lerp(inkW(i0),inkW(i1),f);
+  const grow=stretch?Math.sin(Math.PI*f)*16:0;   /* 毛毛虫：中途身长 */
+  ink.style.left=(L-8)+'px'; ink.style.width=(W+16+grow)+'px';
+  const act=Math.round(segP);
+  segT.forEach((t,i)=>t.classList.toggle('active',i===act));
+}
+function segTo(i,ms=320){tween(segP,i,ms,backOut,v=>setSeg(v))}
+segT.forEach(t=>t.addEventListener('click',()=>{segTo(+t.dataset.i);curSeg=+t.dataset.i}));
+/* 手指跟手 + 按距离/速度吸附 */
+let sDown=false,sX=0,sP0=0,sLastX=0,sLastT=0,sVel=0;
+segView.addEventListener('pointerdown',e=>{sDown=true;sX=sLastX=e.clientX;sP0=segP;sLastT=performance.now();sVel=0;segView.setPointerCapture(e.pointerId)});
+segView.addEventListener('pointermove',e=>{
+  if(!sDown)return;const dx=e.clientX-sX;
+  const v=(e.clientX-sLastX)/Math.max(1,performance.now()-sLastT);sLastX=e.clientX;sLastT=performance.now();sVel=sVel*.6+v*.4;
+  setSeg(sP0-dx/segRect().width*1);
+});
+segView.addEventListener('pointerup',e=>{
+  if(!sDown)return;sDown=false;
+  const dx=e.clientX-sX;
+  let target=Math.round(sP0 - dx/segRect().width*1);   /* 按距离初判 */
+  if(Math.abs(sVel)>0.5) target=sVel>0?Math.ceil(segP):Math.floor(segP); /* 速度优先 */
+  target=clamp(target,0,2);segTo(target);curSeg=target;
+});
+segView.addEventListener('pointercancel',()=>{sDown=false;segTo(Math.round(segP))});
+
+/* ================= 9. 详情页：视差 + 标题飞入 + 拉伸 + 速度吸附 ================= */
+const detail=$('#detail'), dScroll=$('#dScroll'), dHeroImg=$('#dHeroImg'), dDim=$('#dHeroDim'),
+      dTitle=$('#dTitle'), dSub=$('#dSub'), dNav=$('#dNav');
+const HERO_H=330, COLLAPSE=250;
+/* 填充曲目 */
+const tracks=['晚风信箱','雾里行走','城南旧灯','银河慢递','退潮之后','玻璃晴朗','候鸟十二点','空巷','低温火焰','失眠收容所','海雾预报','黎明前的钟摆'];
+$('#dTracks').innerHTML=tracks.map((t,i)=>`<div class="d-track"><span class="d-n">${String(i+1).padStart(2,'0')}</span><div><div class="m-t">${t}</div><div class="m-s">${['QQ音乐','网易云','酷狗','汽水'][i%4]} · ${['无损','Hi-Res','高品','无损'][i%4]}</div></div><span class="d-hb">♥</span></div>`).join('');
+let dOpen=false;
+function syncDetail(){
+  const s=dScroll.scrollTop;
+  dHeroImg.style.transform='translateY('+(s*.5)+'px)';          /* 头图 0.5x 视差 */
+  dDim.style.opacity=Math.min(1,s/220);                          /* 慢慢压暗 */
+  const p=clamp(s/COLLAPSE,0,1);
+  const tb=$('.topbar').getBoundingClientRect();
+  dTitle.style.transform='translateY('+(-p*(tb.bottom-60))+'px) scale('+(1-p*.62)+')';
+  dTitle.style.opacity=1-p*.55;
+  dSub.style.opacity=1-p*1.4;
+  dNav.classList.toggle('solid',p>.55);                          /* 导航栏毛玻璃渐变 */
+}
+dScroll.addEventListener('scroll',()=>{if(!pullStretch)syncDetail()});
+function openDetail(){dOpen=true;detail.classList.add('open');dScroll.scrollTop=0;setTimeout(syncDetail,60)}
+$('#dBack').addEventListener('click',()=>{dOpen=false;detail.classList.remove('open')});
+$$('[data-open-detail]').forEach(c=>c.addEventListener('click',openDetail));
+/* 顶部下拉拉伸 + 松手按速度吸附（不停在半路） */
+let pullStretch=false,puY=0,pu0=0,puLastY=0,puLastT=0,puVel=0;
+dScroll.addEventListener('touchstart',e=>{
+  puY=puLastY=e.touches[0].clientY;pu0=dScroll.scrollTop;puLastT=performance.now();puVel=0;
+  if(pu0<=0)pullStretch=true;
+},{passive:true});
+dScroll.addEventListener('touchmove',e=>{
+  if(!pullStretch)return;
+  const dy=e.touches[0].clientY-puY;
+  const v=(e.touches[0].clientY-puLastY)/Math.max(1,performance.now()-puLastT);
+  puLastY=e.touches[0].clientY;puLastT=performance.now();puVel=puVel*.6+v*.4;
+  if(dy>0&&pu0<=0){dScroll.scrollTop=0;
+    dHeroImg.style.transform='scale('+(1+Math.min(90,dy)/700)+') translateZ(0)';   /* 头图跟着放大 */
+    e.preventDefault();}
+},{passive:false});
+dScroll.addEventListener('touchend',()=>{
+  if(!pullStretch)return;pullStretch=false;
+  /* 按最后速度自动收到底或弹回展开 */
+  if(puVel<-0.5||dScroll.scrollTop>COLLAPSE*.5&&puVel<0.5){}
+  if(-puVel>0.5||dScroll.scrollTop>COLLAPSE/2){tween(dScroll.scrollTop,COLLAPSE+80,380,easeIO,v=>dScroll.scrollTop=v,syncDetail)}
+  else{tween(dScroll.scrollTop,0,380,easeIO,v=>dScroll.scrollTop=v,syncDetail)}
+});
+/* 桌面预览无触摸屏：鼠标滚轮也模拟吸附 */
+dScroll.addEventListener('wheel',e=>{if(!dOpen)return;
+  clearTimeout(dScroll._wt);dScroll._wt=setTimeout(()=>{ if(!pullStretch){const t=dScroll.scrollTop>COLLAPSE/2?COLLAPSE+80:0;tween(dScroll.scrollTop,t,340,easeIO,v=>dScroll.scrollTop=v,syncDetail)} },140);
+},{passive:true});
+
+/* ================= 10. 桌面歌词：悬浮条拖动 ================= */
+const lyric=$('#lyric');let lw=false,lx=0,ly=0;
+lyric.addEventListener('pointerdown',e=>{lw=true;lx=e.clientX-lyric.offsetLeft;ly=e.clientY-lyric.offsetTop;lyric.setPointerCapture(e.pointerId)});
+lyric.addEventListener('pointermove',e=>{if(!lw)return;
+  lyric.style.left=clamp(e.clientX-lx,-40,390-100)+'px';
+  lyric.style.top=clamp(e.clientY-ly,-10,844-70)+'px'});
+lyric.addEventListener('pointerup',()=>lw=false);
+
+/* ================= 11. 搜索（端上 C++ 核心，经 api.js 桥接） ================= */
+const srcMap={qq:['Q','#5ecbff'],wy:['云','#ff7a7a'],kg:['K','#4ade80'],qs:['汽','#ffb066']};
+const srcName={qq:'QQ音乐',wy:'网易云',kg:'酷狗',qs:'汽水'};
+const srRes=$('#srRes');
+const player=$('#player');
+let srSrc='all', srTimer=0, lastHits=[];
+function renderHits(list){
+  lastHits=list||[];
+  if(!lastHits.length){srRes.innerHTML='<div class="sr-item glass"><div class="s-a">没有结果，换个关键词试试</div></div>';srRes.classList.add('open');return}
+  srRes.innerHTML=lastHits.map((it,i)=>`<div class="sr-item glass" data-i="${i}"><div class="sr-cover" style="background:${(srcMap[it.src]||['?','#888'])[1]}">${(srcMap[it.src]||['?'])[0]}</div><div style="flex:1"><div class="s-t">${it.title||''}</div><div class="s-a">${it.artist||''} · ${it.quality||''}</div></div><span class="src-tag src-${it.src}">${srcName[it.src]||it.src}</span></div>`).join('');
+  srRes.classList.add('open');
+}
+async function doSearch(q,src){
+  if(!q){srRes.classList.remove('open');return}
+  srRes.innerHTML='<div class="sr-item glass"><div class="s-a">全平台检索中…</div></div>';srRes.classList.add('open');
+  try{
+    const j=await api('/api/search?q='+encodeURIComponent(q)+'&src='+encodeURIComponent(src||'all'));
+    renderHits(j.data||[]);
+  }catch(e){
+    srRes.innerHTML='<div class="sr-item glass"><div class="s-a">代理连不上：'+e.message+'</div></div>';
+  }
+}
+$('#chipAll').addEventListener('click',()=>{$$('.sr-chips .chip').forEach(c=>c.classList.remove('on'));$('#chipAll').classList.add('on');srSrc='all';const q=$('#srInput').value.trim();if(q)doSearch(q,'all')});
+$$('.sr-chips .chip[data-src]').forEach(c=>c.addEventListener('click',()=>{
+  $$('.sr-chips .chip').forEach(x=>x.classList.remove('on'));c.classList.add('on');
+  srSrc=c.dataset.src;const q=$('#srInput').value.trim();
+  toast('单一平台：'+c.textContent);if(q)doSearch(q,srSrc);
+}));
+$('#srInput').addEventListener('input',()=>{
+  clearTimeout(srTimer);const q=$('#srInput').value.trim();
+  srTimer=setTimeout(()=>doSearch(q,srSrc),380);
+});
+srRes.addEventListener('click',async e=>{
+  const row=e.target.closest('.sr-item');if(!row||row.dataset.i==null)return;
+  const it=lastHits[+row.dataset.i];if(!it||!it.id){toast(it&&it.artist?it.artist:'无法播放');return}
+  $$('.sr-item').forEach(x=>x.classList.remove('playing'));row.classList.add('playing');
+  toast('取播放链 · '+srcName[it.src]);
+  try{
+    const j=await api('/api/playurl?src='+it.src+'&id='+encodeURIComponent(it.id));
+    const d=j.data||{};
+    if(!d.url){toast(d.message||'该曲无游客播放链');return}
+    player.src=d.url;player.play().catch(()=>toast('浏览器拦截了自动播放，再点一次'));
+    $('#nowp').classList.add('on');
+    $('#npTitle').textContent=it.title||d.title||'正在播放';
+    $('#npArtist').textContent=(it.artist||d.artist||'')+' · '+srcName[it.src];
+    try{
+      const ly=await api('/api/lyric?src='+it.src+'&id='+encodeURIComponent(it.id));
+      const lrc=(ly.data&&ly.data.lrc)||'';
+      const line=(lrc.split('\n').find(x=>/[\u4e00-\u9fa5]/.test(x))||'').replace(/\[[^\]]+\]/g,'').trim();
+      if(line) $('#lyric .ly-l').textContent=line;
+      $('#lyric .ly-t b').textContent='♪ '+(it.title||'')+' · '+(it.artist||'');
+    }catch(_){}
+  }catch(err){toast('播放失败 '+err.message)}
+});
+
+/* 新歌速递走网易云公开接口 */
+(async()=>{
+  try{
+    const j=await api('/api/newsong');
+    const box=$('.feed-real'); if(!box||!j.data) return;
+    box.innerHTML=j.data.slice(0,3).map((it,i)=>`<div class="fd-item" style="--i:${i}"><div class="fd-cover" style="background:linear-gradient(135deg,#ff6a8a,#7a5cff)">♪</div><div><div class="s-t">${it.title||''}</div><div class="s-a">${it.artist||''} · 网易云</div></div></div>`).join('');
+  }catch(_){}
+})();
+
+/* 合并去重按钮 */
+$('#mergeBtn').addEventListener('morphend',()=>toast('已重新合并去重：204 → 187 首（演示，规则待确认）'));
+
+/* ================= 12. 平台扫码 / Cookie 登录 ================= */
+const platName={qq:'QQ音乐',wy:'网易云',kg:'酷狗',qs:'汽水'};
+const loginWrap=$('#loginWrap');
+let loginSrc='', loginJob='', loginTimer=0;
+function setPlatStatus(src, rec){
+  const el=$('#st-'+src); if(!el) return;
+  if(rec&&rec.logged){el.textContent='已登录 · '+(rec.nickname||'账号已保存');el.classList.add('ok')}
+  else {el.textContent='未连接 · '+((rec&&rec.hint)||'登录后同步歌单');el.classList.remove('ok')}
+}
+async function refreshLoginStatus(){
+  try{
+    const j=await api('/api/login/status');
+    Object.entries(j.data||{}).forEach(([src,rec])=>setPlatStatus(src, rec));
+  }catch(_){}
+}
+function closeLogin(){
+  loginWrap.classList.add('closing');
+  clearInterval(loginTimer); loginTimer=0; loginJob='';
+  setTimeout(()=>{loginWrap.classList.remove('open','closing');$('#app').classList.remove('pushed')},210);
+}
+async function openLogin(src){
+  loginSrc=src; loginJob='';
+  $('#loginTitle').textContent='登录 '+platName[src];
+  $('#loginHint').textContent='拉取二维码中…';
+  $('#loginStatus').textContent='';
+  $('#loginCookie').value='';
+  $('#loginQr').style.display='none'; $('#loginQr').src='';
+  $('#app').classList.add('pushed');
+  loginWrap.classList.remove('closing'); loginWrap.classList.add('open');
+  try{
+    const j=await api('/api/login/qr?src='+src);
+    const d=j.data||{};
+    $('#loginHint').textContent=d.hint||'';
+    if(d.qrimg){ $('#loginQr').src=d.qrimg; $('#loginQr').style.display='block'; }
+    else if(d.url){
+      $('#loginQr').src='https://api.qrserver.com/v1/create-qr-code/?size=188x188&data='+encodeURIComponent(d.url);
+      $('#loginQr').style.display='block';
+    }
+    if(d.job){ loginJob=d.job; $('#loginStatus').textContent='等待扫码…';
+      loginTimer=setInterval(pollLogin,1600); pollLogin(); }
+    else $('#loginStatus').textContent='此平台请粘贴 Cookie';
+  }catch(e){ $('#loginStatus').textContent='拉码失败：'+e.message; }
+}
+async function pollLogin(){
+  if(!loginJob||!loginSrc) return;
+  try{
+    const j=await api('/api/login/poll?src='+loginSrc+'&job='+encodeURIComponent(loginJob));
+    const d=j.data||{};
+    $('#loginStatus').textContent=d.message||d.status||'';
+    if(d.status==='ok'){ clearInterval(loginTimer); toast(platName[loginSrc]+' 已登录'); await refreshLoginStatus(); setTimeout(closeLogin,600); }
+    if(d.status==='expired'){ clearInterval(loginTimer); }
+    if(d.status==='blocked'){ /* keep cookie paste visible */ }
+  }catch(e){ $('#loginStatus').textContent='轮询失败 '+e.message; }
+}
+$$('[data-plat]').forEach(b=>b.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();openLogin(b.dataset.plat)}));
+$('#loginCancel').addEventListener('click',closeLogin);
+$('#loginMask').addEventListener('click',closeLogin);
+$('#loginCookieBtn').addEventListener('click',async()=>{
+  const ck=$('#loginCookie').value.trim();
+  if(!ck){toast('先粘贴 Cookie');return}
+  try{
+    const j=await apiPost('/api/login/cookie',{src:loginSrc,cookie:ck});
+    if(j.code!==0){toast(j.message||'Cookie 无效');return}
+    toast(platName[loginSrc]+' Cookie 已保存'); await refreshLoginStatus(); closeLogin();
+  }catch(e){toast('保存失败 '+e.message)}
+});
+refreshLoginStatus();
+</script>
+</body>
+</html>
