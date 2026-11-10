@@ -1,12 +1,23 @@
 package com.meloglass.app;
 
 import android.app.Activity;
+import android.content.Intent;
+import android.graphics.Color;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.Gravity;
+import android.view.ViewGroup;
+import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+import android.widget.Toast;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -20,17 +31,20 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
-import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
  * MeloGlass 液态玻璃音乐 APP —— Java 胶水层。
- * 所有业务逻辑（搜索 / 播放链 / 扫码登录 / 会话）在 C++（app/src/main/cpp/meloglass.cpp）。
+ * 所有业务逻辑（搜索 / 播放链 / 会话）在 C++（app/src/main/cpp/meloglass.cpp）。
  * Java 只负责：
  *   1. WebView 宿主 + JS 桥（AndroidBridge.api → native C++）
  *   2. Http.request：C++ 通过 JNI 调用平台 HTTP 栈（TLS 由系统处理）
  *   3. Store.read/write：C++ 持久化会话到 filesDir
+ *   4. openWebLogin：内置 WebView 打开各平台官方登录页（QQ/微信/账号密码/扫码都随官方支持），
+ *      登录态 Cookie 自动抓回，交给 JS → C++ 保存
  */
 public class MainActivity extends Activity {
 
@@ -41,11 +55,48 @@ public class MainActivity extends Activity {
     }
 
     private WebView web;
+    private final Handler uiHandler = new Handler(Looper.getMainLooper());
+
+    // ---- 官方页登录（WebView 全屏层）----
+    private ViewGroup loginOverlay;
+    private WebView loginWebView;
+    private Runnable loginPollTask;
+    private String loginPollSrc;
+
+    /** 各平台：官方登录入口 URL + 登录态检测域 + 成功关键字 */
+    private static final Map<String, Object[]> LOGIN_CFG = new HashMap<>();
+    static {
+        LOGIN_CFG.put("qq", new Object[]{
+                "https://y.qq.com/portal/login.html",
+                new String[]{"https://y.qq.com/", "https://u.y.qq.com/", "https://graph.qq.com/"},
+                new String[]{"qm_keyst", "uin=", "p_skey"}});
+        LOGIN_CFG.put("kg", new Object[]{
+                "https://m.kugou.com/login/",
+                new String[]{"https://m.kugou.com/", "https://www.kugou.com/", "https://user.kugou.com/"},
+                new String[]{"userid=", "kugou_login_name", "KuGoo=", "kugou_"}});
+        LOGIN_CFG.put("qs", new Object[]{
+                "https://www.qishui.com/",
+                new String[]{"https://www.qishui.com/", "https://api.qishui.com/"},
+                new String[]{"sessionid", "sid_tt", "sid_guard"}});
+        LOGIN_CFG.put("wy", new Object[]{
+                "https://music.163.com/",
+                new String[]{"https://music.163.com/"},
+                new String[]{"MUSIC_U"}});
+    }
+
+    private static final Map<String, String> LOGIN_TITLE = new HashMap<>();
+    static {
+        LOGIN_TITLE.put("qq", "QQ音乐（支持 QQ / 微信登录）");
+        LOGIN_TITLE.put("kg", "酷狗音乐");
+        LOGIN_TITLE.put("qs", "汽水音乐（抖音授权）");
+        LOGIN_TITLE.put("wy", "网易云音乐");
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         FileDirs.init(getFilesDir());
+        CookieManager.getInstance().setAcceptCookie(true);
         web = new WebView(this);
         setContentView(web);
         WebSettings s = web.getSettings();
@@ -61,6 +112,10 @@ public class MainActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        if (loginOverlay != null) {
+            closeLoginWeb();
+            return;
+        }
         if (web != null && web.canGoBack()) {
             web.goBack();
         } else {
@@ -77,7 +132,161 @@ public class MainActivity extends Activity {
         public String ping() {
             return "meloglass-cpp";
         }
+
+        @JavascriptInterface
+        public void openWebLogin(String src, String url) {
+            uiHandler.post(() -> showLoginWeb(src, url));
+        }
     }
+
+    // ---------------- 官方页登录 ----------------
+
+    private void showLoginWeb(String src, String url) {
+        stopLoginPoll();
+        if (loginOverlay != null) {
+            ((ViewGroup) getWindow().getDecorView()).removeView(loginOverlay);
+            loginOverlay = null;
+        }
+        loginPollSrc = src;
+
+        LinearLayout box = new LinearLayout(this);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setBackgroundColor(Color.parseColor("#0B0E1A"));
+
+        // 顶栏：标题 + 关闭
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setPadding(dp(16), dp(10), dp(16), dp(10));
+        TextView title = new TextView(this);
+        title.setText("登录 " + LOGIN_TITLE.get(src));
+        title.setTextColor(0xFFFFFFFF);
+        title.setTextSize(15);
+        title.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView close = new TextView(this);
+        close.setText("✕ 关闭");
+        close.setTextColor(0xFFB9C0FF);
+        close.setTextSize(15);
+        close.setPadding(dp(14), dp(8), 0, dp(8));
+        close.setOnClickListener(v -> closeLoginWeb());
+        bar.addView(title);
+        bar.addView(close);
+        box.addView(bar, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        loginWebView = new WebView(this);
+        WebSettings ws = loginWebView.getSettings();
+        ws.setJavaScriptEnabled(true);
+        ws.setDomStorageEnabled(true);
+        ws.setJavaScriptCanOpenWindowsAutomatically(true);
+        ws.setSupportMultipleWindows(false);
+        ws.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        CookieManager.getInstance().setAcceptThirdPartyCookies(loginWebView, true);
+        loginWebView.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView v, String u) {
+                // 放行外部 App 跳转（QQ 快捷登录拉起手机 QQ 等）
+                if (u != null && !u.startsWith("http://") && !u.startsWith("https://")) {
+                    try {
+                        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(u)));
+                    } catch (Exception ignored) {
+                    }
+                    return true;
+                }
+                return false;
+            }
+        });
+        loginWebView.setWebChromeClient(new WebChromeClient());
+        box.addView(loginWebView, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        loginOverlay = box;
+        addContentView(box, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        loginWebView.loadUrl(url);
+
+        startLoginPoll(src);
+    }
+
+    private void startLoginPoll(String src) {
+        Object[] cfg = LOGIN_CFG.get(src);
+        if (cfg == null) return;
+        String[] domains = (String[]) cfg[1];
+        String[] keys = (String[]) cfg[2];
+        loginPollTask = new Runnable() {
+            @Override
+            public void run() {
+                if (loginOverlay == null || loginPollSrc == null || !loginPollSrc.equals(src)) return;
+                String merged = mergedCookies(domains);
+                if (containsAny(merged, keys)) {
+                    String js = "window.__nativeLogin && window.__nativeLogin("
+                            + JSONObject.quote(src) + "," + JSONObject.quote(merged) + ")";
+                    if (loginWebView != null) loginWebView.evaluateJavascript(js, null);
+                    Toast.makeText(MainActivity.this, "检测到登录成功，已保存", Toast.LENGTH_SHORT).show();
+                    uiHandler.postDelayed(MainActivity.this::closeLoginWeb, 900);
+                    return;
+                }
+                uiHandler.postDelayed(this, 1500);
+            }
+        };
+        uiHandler.postDelayed(loginPollTask, 2500);
+    }
+
+    private void stopLoginPoll() {
+        if (loginPollTask != null) {
+            uiHandler.removeCallbacks(loginPollTask);
+            loginPollTask = null;
+        }
+        loginPollSrc = null;
+    }
+
+    private void closeLoginWeb() {
+        stopLoginPoll();
+        if (loginOverlay != null && loginOverlay.getParent() instanceof ViewGroup) {
+            ((ViewGroup) loginOverlay.getParent()).removeView(loginOverlay);
+        }
+        if (loginWebView != null) {
+            loginWebView.destroy();
+            loginWebView = null;
+        }
+        loginOverlay = null;
+    }
+
+    private String mergedCookies(String[] domains) {
+        Map<String, String> jar = new LinkedHashMap<>();
+        CookieManager cm = CookieManager.getInstance();
+        for (String d : domains) {
+            String c = cm.getCookie(d);
+            if (c == null) continue;
+            for (String pair : c.split(";")) {
+                int eq = pair.indexOf('=');
+                if (eq <= 0) continue;
+                String k = pair.substring(0, eq).trim();
+                String v = pair.substring(eq + 1).trim();
+                if (!k.isEmpty()) jar.put(k, v);
+            }
+        }
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, String> e : jar.entrySet()) {
+            if (sb.length() > 0) sb.append("; ");
+            sb.append(e.getKey()).append('=').append(e.getValue());
+        }
+        return sb.toString();
+    }
+
+    private static boolean containsAny(String s, String[] keys) {
+        if (s == null || s.isEmpty()) return false;
+        for (String k : keys) {
+            if (s.contains(k)) return true;
+        }
+        return false;
+    }
+
+    private int dp(int v) {
+        return Math.round(v * getResources().getDisplayMetrics().density);
+    }
+
+    // ---------------- C++ 传输 / 存取 ----------------
 
     /** filesDir 持有者（onCreate 时初始化，供静态 Store 使用）。 */
     public static class FileDirs {

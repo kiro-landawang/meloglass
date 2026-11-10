@@ -261,10 +261,10 @@ static bool g_sess_loaded = false;
 static const char *PLATS[4] = {"qq", "wy", "kg", "qs"};
 
 static const char *plat_hint(const std::string &src) {
-    if (src == "wy") return "用网易云 App 扫码确认";
-    if (src == "qq") return "用手机 QQ / 微信扫码（轮询若被拦，右侧可贴 Cookie）";
-    if (src == "kg") return "酷狗二维码接口需签名，请粘贴网页版 Cookie";
-    if (src == "qs") return "必须用已登录的「抖音 App」扫码，汽水 App 无效";
+    if (src == "wy") return "官方页面登录（账号密码 / 扫码都行）";
+    if (src == "qq") return "官方页面登录（QQ / 微信都行）";
+    if (src == "kg") return "官方页面登录";
+    if (src == "qs") return "用抖音授权登录";
     return "";
 }
 

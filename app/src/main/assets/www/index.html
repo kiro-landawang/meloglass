@@ -334,27 +334,27 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
 
       <!-- ============ 首页 ============ -->
       <section class="page active" data-page="home">
-        <div class="sec-t">平台接入 <small>点「连接」出官方扫码；QQ/酷狗可改贴 Cookie</small></div>
+        <div class="sec-t">登录音乐平台 <small>官方页面登录，QQ / 微信 / 账号密码都行，登完自动保存</small></div>
         <div class="plat-grid">
           <div class="plat glass">
             <div class="p-logo qq">Q</div>
-            <div class="p-main"><div class="p-t">QQ音乐</div><div class="p-s" id="st-qq">未连接 · 登录后同步歌单</div></div>
-            <button class="morph" data-plat="qq"><span class="m-tx">连 接</span></button>
+            <div class="p-main"><div class="p-t">QQ音乐</div><div class="p-s" id="st-qq">未登录 · 点右侧登录</div></div>
+            <button class="morph" data-plat="qq"><span class="m-tx">登 录</span></button>
           </div>
           <div class="plat glass">
             <div class="p-logo wy">云</div>
-            <div class="p-main"><div class="p-t">网易云音乐</div><div class="p-s" id="st-wy">未连接 · 登录后同步歌单</div></div>
-            <button class="morph" data-plat="wy"><span class="m-tx">连 接</span></button>
+            <div class="p-main"><div class="p-t">网易云音乐</div><div class="p-s" id="st-wy">未登录 · 点右侧登录</div></div>
+            <button class="morph" data-plat="wy"><span class="m-tx">登 录</span></button>
           </div>
           <div class="plat glass">
             <div class="p-logo kg">K</div>
-            <div class="p-main"><div class="p-t">酷狗音乐</div><div class="p-s" id="st-kg">未连接 · 登录后同步歌单</div></div>
-            <button class="morph" data-plat="kg"><span class="m-tx">连 接</span></button>
+            <div class="p-main"><div class="p-t">酷狗音乐</div><div class="p-s" id="st-kg">未登录 · 点右侧登录</div></div>
+            <button class="morph" data-plat="kg"><span class="m-tx">登 录</span></button>
           </div>
           <div class="plat glass">
             <div class="p-logo qs">汽</div>
-            <div class="p-main"><div class="p-t">汽水音乐</div><div class="p-s" id="st-qs">未连接 · 登录后同步歌单</div></div>
-            <button class="morph" data-plat="qs"><span class="m-tx">连 接</span></button>
+            <div class="p-main"><div class="p-t">汽水音乐</div><div class="p-s" id="st-qs">未登录 · 点右侧登录</div></div>
+            <button class="morph" data-plat="qs"><span class="m-tx">登 录</span></button>
           </div>
         </div>
 
@@ -435,7 +435,7 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
         <div class="sec-t">我的 <small>设置即演示</small></div>
         <div class="row glass" style="margin-bottom:12px">
           <div class="r-ic" style="background:linear-gradient(135deg,#8b9dff,#e08bff);color:#fff;font-weight:800">M</div>
-          <div class="r-main"><div class="r-t">未登录 · 游客模式</div><div class="r-d">登录 MeloGlass 账号后跨设备同步（待确认：要不要自建账号体系）</div></div>
+          <div class="r-main"><div class="r-t">我的账号</div><div class="r-d">在首页登录各音乐平台，歌单和收藏会显示在这里</div></div>
           <button class="morph" data-morph id="meLogin"><span class="m-tx">登录</span></button>
         </div>
 
@@ -839,7 +839,7 @@ srRes.addEventListener('click',async e=>{
   try{
     const j=await api('/api/playurl?src='+it.src+'&id='+encodeURIComponent(it.id));
     const d=j.data||{};
-    if(!d.url){toast(d.message||'该曲无游客播放链');return}
+    if(!d.url){toast(d.message||'该曲需要登录或会员，先去首页登录平台');return}
     player.src=d.url;player.play().catch(()=>toast('浏览器拦截了自动播放，再点一次'));
     $('#nowp').classList.add('on');
     $('#npTitle').textContent=it.title||d.title||'正在播放';
@@ -873,7 +873,7 @@ let loginSrc='', loginJob='', loginTimer=0;
 function setPlatStatus(src, rec){
   const el=$('#st-'+src); if(!el) return;
   if(rec&&rec.logged){el.textContent='已登录 · '+(rec.nickname||'账号已保存');el.classList.add('ok')}
-  else {el.textContent='未连接 · '+((rec&&rec.hint)||'登录后同步歌单');el.classList.remove('ok')}
+  else {el.textContent='未登录 · '+((rec&&rec.hint)||'点击登录');el.classList.remove('ok')}
 }
 async function refreshLoginStatus(){
   try{
@@ -886,7 +886,31 @@ function closeLogin(){
   clearInterval(loginTimer); loginTimer=0; loginJob='';
   setTimeout(()=>{loginWrap.classList.remove('open','closing');$('#app').classList.remove('pushed')},210);
 }
+/* APP 内：全部平台走内置浏览器打开官方登录页（QQ/微信/账号密码/扫码随官方支持） */
+const LOGIN_WEB_URL={
+  qq:'https://y.qq.com/portal/login.html',
+  wy:'https://music.163.com/',
+  kg:'https://m.kugou.com/login/',
+  qs:'https://www.qishui.com/'
+};
+/* Java 层检测到登录 Cookie 后回调这里 */
+window.__nativeLogin = async function(src, cookie){
+  try{
+    const j = await apiPost('/api/login/cookie', {src, cookie});
+    if(j && j.code === 0){
+      toast(platName[src]+' 登录成功');
+      await refreshLoginStatus();
+    }else{
+      toast((j && j.message) || '登录态保存失败');
+    }
+  }catch(e){ toast('登录态保存失败 '+e.message); }
+};
 async function openLogin(src){
+  if(HAS_BRIDGE && LOGIN_WEB_URL[src]){
+    toast('打开 '+platName[src]+' 官方登录页…');
+    window.AndroidBridge.openWebLogin(src, LOGIN_WEB_URL[src]);
+    return;
+  }
   loginSrc=src; loginJob='';
   $('#loginTitle').textContent='登录 '+platName[src];
   $('#loginHint').textContent='拉取二维码中…';
