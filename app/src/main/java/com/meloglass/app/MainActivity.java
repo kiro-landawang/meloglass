@@ -68,20 +68,26 @@ public class MainActivity extends Activity {
     private static final Map<String, Object[]> LOGIN_CFG = new HashMap<>();
     static {
         LOGIN_CFG.put("qq", new Object[]{
-                "https://i.y.qq.com/n2/m/login/index.html",
+                "https://ui.ptlogin2.qq.com/cgi-bin/login?style=9&appid=716027609&daid=383&pt_no_onekey=1&s_url="
+                        + "https%3A%2F%2Fy.qq.com%2F",
                 new String[]{
                         "https://y.qq.com/", "https://i.y.qq.com/", "https://u.y.qq.com/",
-                        "https://graph.qq.com/", "https://ptlogin2.qq.com/", "https://qq.com/"
+                        "https://ui.ptlogin2.qq.com/", "https://ptlogin2.qq.com/",
+                        "https://graph.qq.com/", "https://qq.com/"
                 },
-                new String[]{"qm_keyst", "uin=", "wxuin", "p_skey", "luin"}});
+                new String[]{"qm_keyst", "uin=", "wxuin", "p_skey", "luin", "p_uin"}});
         LOGIN_CFG.put("kg", new Object[]{
-                "https://www.kugou.com/",
-                new String[]{"https://www.kugou.com/", "https://m.kugou.com/", "https://user.kugou.com/"},
-                new String[]{"userid=", "kugou_login_name", "KuGoo=", "Kugoo", "token="}});
-        LOGIN_CFG.put("qs", new Object[]{
-                "https://sso.douyin.com/",
+                "https://login-user.kugou.com/",
                 new String[]{
-                        "https://sso.douyin.com/", "https://www.douyin.com/",
+                        "https://login-user.kugou.com/", "https://www.kugou.com/",
+                        "https://m.kugou.com/", "https://user.kugou.com/",
+                        "https://userinfo.user.kugou.com/"
+                },
+                new String[]{"userid=", "kugou_login_name", "KuGoo=", "Kugoo", "token=", "KugooID"}});
+        LOGIN_CFG.put("qs", new Object[]{
+                "https://www.douyin.com/passport/sso/login/",
+                new String[]{
+                        "https://www.douyin.com/", "https://sso.douyin.com/",
                         "https://www.qishui.com/", "https://api.qishui.com/"
                 },
                 new String[]{"sessionid", "sid_tt", "sid_guard", "sid_ucp_v1"}});
@@ -302,11 +308,12 @@ public class MainActivity extends Activity {
         if (loginWebView == null) return;
         String js =
                 "(function(){"
-                + "var t=document.title||'';"
+                + "var href=location.href||'';"
+                + "if(/ptlogin2|login-user\\.kugou|passport\\/sso\\/login|\\/m\\/login/.test(href)) return;"
                 + "var b=(document.body&&document.body.innerText)||'';"
-                + "if(/登录|微信|QQ|手机号|验证码/.test(b) && b.length<4000) return;"
+                + "if(/手机号|验证码|密码登录|微信登录|QQ登录/.test(b)) return;"
                 + "function hit(n){var x=(n.innerText||n.textContent||'').replace(/\\s+/g,'').trim();"
-                + "return x==='登录'||x==='立即登录'||x==='登录/注册'||x==='Signin';}"
+                + "return x==='登录'||x==='立即登录'||x==='登录/注册';}"
                 + "var ns=document.querySelectorAll('a,button,span,div');"
                 + "for(var i=0;i<ns.length;i++){if(hit(ns[i])&&ns[i].offsetParent){ns[i].click();return;}}"
                 + "})();";

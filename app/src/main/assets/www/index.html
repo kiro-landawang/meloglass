@@ -928,10 +928,10 @@ function closeLogin(){
 }
 /* APP 内：全部平台走内置浏览器打开官方登录页（QQ/微信/账号密码/扫码随官方支持） */
 const LOGIN_WEB_URL={
-  qq:'https://i.y.qq.com/n2/m/login/index.html',
+  qq:'https://ui.ptlogin2.qq.com/cgi-bin/login?style=9&appid=716027609&daid=383&pt_no_onekey=1&s_url='+encodeURIComponent('https://y.qq.com/'),
   wy:'https://music.163.com/m/login',
-  kg:'https://www.kugou.com/',
-  qs:'https://sso.douyin.com/'
+  kg:'https://login-user.kugou.com/',
+  qs:'https://www.douyin.com/passport/sso/login/'
 };
 /* Java 层检测到登录 Cookie 后回调这里 */
 window.__nativeLogin = async function(src, cookie){
