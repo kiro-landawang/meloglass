@@ -77,18 +77,19 @@ public class MainActivity extends Activity {
                 },
                 new String[]{"qm_keyst", "uin=", "wxuin", "p_skey", "luin", "p_uin"}});
         LOGIN_CFG.put("kg", new Object[]{
-                "https://login-user.kugou.com/",
+                "https://openplat-user.kugou.com/weixin/index.php?ktype=0&appid=1058&https=1&domain=kugou.com",
                 new String[]{
                         "https://login-user.kugou.com/", "https://www.kugou.com/",
                         "https://m.kugou.com/", "https://user.kugou.com/",
-                        "https://userinfo.user.kugou.com/"
+                        "https://openplat-user.kugou.com/", "https://open.weixin.qq.com/"
                 },
                 new String[]{"userid=", "kugou_login_name", "KuGoo=", "Kugoo", "token=", "KugooID"}});
         LOGIN_CFG.put("qs", new Object[]{
-                "https://www.douyin.com/passport/sso/login/",
+                "https://www.douyin.com/passport/sso/login/?aid=386088&next=https%3A%2F%2Fwww.qishui.com%2F",
                 new String[]{
                         "https://www.douyin.com/", "https://sso.douyin.com/",
-                        "https://www.qishui.com/", "https://api.qishui.com/"
+                        "https://www.qishui.com/", "https://api.qishui.com/",
+                        "https://www.toutiao.com/"
                 },
                 new String[]{"sessionid", "sid_tt", "sid_guard", "sid_ucp_v1"}});
         LOGIN_CFG.put("wy", new Object[]{
@@ -309,7 +310,7 @@ public class MainActivity extends Activity {
         String js =
                 "(function(){"
                 + "var href=location.href||'';"
-                + "if(/ptlogin2|login-user\\.kugou|passport\\/sso\\/login|\\/m\\/login/.test(href)) return;"
+                + "if(/ptlogin2|openplat-user\\.kugou|open\\.weixin\\.qq|passport\\/sso\\/login|\\/m\\/login/.test(href)) return;"
                 + "var b=(document.body&&document.body.innerText)||'';"
                 + "if(/手机号|验证码|密码登录|微信登录|QQ登录/.test(b)) return;"
                 + "function hit(n){var x=(n.innerText||n.textContent||'').replace(/\\s+/g,'').trim();"

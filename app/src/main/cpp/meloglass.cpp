@@ -601,6 +601,45 @@ static cJSON *wy_playlist(JNIEnv *env, const std::string &pid) {
     return res;
 }
 
+static cJSON *wy_profile_json(JNIEnv *env, const std::string &cookie);
+
+static cJSON *wy_user_playlists(JNIEnv *env) {
+    cJSON *out = cJSON_CreateArray();
+    std::string ck = cookie_of("wy");
+    if (ck.empty()) return out;
+    cJSON *prof = wy_profile_json(env, ck);
+    std::string uid;
+    cJSON *uidit = prof ? cJSON_GetObjectItemCaseSensitive(prof, "uid") : nullptr;
+    if (uidit && cJSON_IsNumber(uidit)) uid = std::to_string((long long) uidit->valuedouble);
+    if (uid.empty()) uid = Jstr(prof, "uid");
+    if (prof) cJSON_Delete(prof);
+    if (uid.empty()) return out;
+    std::string url = "https://music.163.com/api/user/playlist?uid=" + uid + "&limit=50&offset=0";
+    Up up = up_get(env, url, "https://music.163.com/", ck);
+    cJSON *j = loads_maybe(up.text);
+    if (j) {
+        cJSON *pls = Jarr(j, "playlist");
+        if (pls) {
+            int n = cJSON_GetArraySize(pls);
+            for (int i = 0; i < n; i++) {
+                cJSON *it = cJSON_GetArrayItem(pls, i);
+                cJSON *item = cJSON_CreateObject();
+                cJSON_AddStringToObject(item, "src", "wy");
+                std::string ids;
+                cJSON *idit = cJSON_GetObjectItemCaseSensitive(it, "id");
+                if (idit && cJSON_IsNumber(idit)) ids = std::to_string((long long) idit->valuedouble);
+                cJSON_AddStringToObject(item, "id", ids.c_str());
+                cJSON_AddStringToObject(item, "title", Jstr(it, "name").c_str());
+                cJSON_AddStringToObject(item, "cover", Jstr(it, "coverImgUrl").c_str());
+                cJSON_AddNumberToObject(item, "count", Jnum(it, "trackCount", 0));
+                cJSON_AddItemToArray(out, item);
+            }
+        }
+        cJSON_Delete(j);
+    }
+    return out;
+}
+
 // ---------------------------------------------------------------- QQ Music
 
 static cJSON *qq_search(JNIEnv *env, const std::string &q) {
@@ -1178,6 +1217,9 @@ static cJSON *wy_profile_json(JNIEnv *env, const std::string &cookie) {
         if (prof) {
             nick = Jstr(prof, "nickname");
             avatar = Jstr(prof, "avatarUrl");
+            cJSON *idit = cJSON_GetObjectItemCaseSensitive(prof, "userId");
+            if (idit && cJSON_IsNumber(idit))
+                cJSON_AddNumberToObject(res, "uid", idit->valuedouble);
         }
         cJSON_Delete(j);
     }
@@ -1643,6 +1685,16 @@ static std::string dispatch(JNIEnv *env, const std::string &method, const std::s
 
     if (p == "/api/recommend") {
         cJSON *data = wy_recommend(env, 8);
+        cJSON *j = cJSON_CreateObject();
+        cJSON_AddNumberToObject(j, "code", 0);
+        cJSON_AddItemToObject(j, "data", data);
+        std::string s = Jprint(j);
+        cJSON_Delete(j);
+        return s;
+    }
+
+    if (p == "/api/mine/playlists") {
+        cJSON *data = wy_user_playlists(env);
         cJSON *j = cJSON_CreateObject();
         cJSON_AddNumberToObject(j, "code", 0);
         cJSON_AddItemToObject(j, "data", data);

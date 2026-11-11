@@ -367,11 +367,7 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
             <div class="sk-item"><div class="sk-ava"></div><div class="sk-lines"><i class="sk-l w62"></i><i class="sk-l w38"></i></div><div class="sk-img"></div></div>
             <div class="sk-shine"></div>
           </div>
-          <div class="feed-real">
-            <div class="fd-item" style="--i:0"><div class="fd-cover" style="background:linear-gradient(135deg,#3aa2ff,#7a5cff)">♪</div><div><div class="s-t">晚风信箱</div><div class="s-a">陈默 · QQ音乐 · 无损</div></div></div>
-            <div class="fd-item" style="--i:1"><div class="fd-cover" style="background:linear-gradient(135deg,#ff6a8a,#e0447a)">♫</div><div><div class="s-t">雾里行走</div><div class="s-a">苏叶 · 网易云 · Hi-Res</div></div></div>
-            <div class="fd-item" style="--i:2"><div class="fd-cover" style="background:linear-gradient(135deg,#2dd4bf,#0e9f8a)">♬</div><div><div class="s-t">城南旧灯</div><div class="s-a">周屿 · 酷狗 · 无损</div></div></div>
-          </div>
+          <div class="feed-real"></div>
         </div>
 
         <div class="sec-t">为你推荐 <small>真实歌单，点封面进详情</small></div>
@@ -404,18 +400,11 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
         <div class="seg-view" id="segView">
           <div class="seg-pages" id="segPages">
             <div class="seg-p" id="discoverList"></div>
-            <div class="seg-p">
-              <div class="merge-note">◈ <b>整合歌单</b>：四个平台登录后，同名/同 ID 歌曲自动<b>合并去重</b>（保留最高音质源），本地保存。<b>待你确认：</b>合并规则与保存位置。</div>
-              <div class="mini glass"><div class="m-c" style="background:linear-gradient(150deg,#2b3a86,#c76a9a)">◈</div><div><div class="m-t">我的整合歌单 · 夜间飞行</div><div class="m-s">32 首 · 来自 QQ/网易云/酷狗</div></div>
-                <button class="btn danger" style="height:34px;padding:0 13px;font-size:11.5px" data-del-real>删除</button></div>
-              <div class="mini glass"><div class="m-c" style="background:linear-gradient(135deg,#3aa2ff,#1e7ae8)">Q</div><div><div class="m-t">QQ音乐 · 我喜欢</div><div class="m-s">已同步 · 128 首</div></div></div>
-              <div class="mini glass"><div class="m-c" style="background:linear-gradient(135deg,#ff6a6a,#e03e3e)">云</div><div><div class="m-t">网易云 · 私人FM收藏</div><div class="m-s">已同步 · 86 首</div></div></div>
-              <button class="btn" id="mergeBtn" style="width:100%;margin-top:6px" data-morph><span class="m-tx">⟲ 重新合并去重</span></button>
+            <div class="seg-p" id="playlistMine">
+              <div class="merge-note">登录音乐平台后，这里显示你的歌单。没登录之前是空的，不会拿假数据凑数。</div>
             </div>
-            <div class="seg-p">
-              <div class="mini glass"><div class="m-c" style="background:linear-gradient(135deg,#64748b,#334155)">⬇</div><div><div class="m-t">已下载</div><div class="m-s">本地缓存 · 1.2 GB</div></div></div>
-              <div class="mini glass"><div class="m-c" style="background:linear-gradient(135deg,#8b5cf6,#6366f1)">🕘</div><div><div class="m-t">最近播放</div><div class="m-s">跨平台合并记录</div></div></div>
-              <div class="mini glass"><div class="m-c" style="background:linear-gradient(135deg,#f43f5e,#fb7185)">♥</div><div><div class="m-t">红心歌曲</div><div class="m-s">四平台红心聚合 · 204 首</div></div></div>
+            <div class="seg-p" id="libraryMine">
+              <div class="merge-note">最近播放会在你点过歌曲之后出现。</div>
             </div>
           </div>
         </div>
@@ -423,7 +412,7 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
 
       <!-- ============ 我的 ============ -->
       <section class="page" data-page="me">
-        <div class="sec-t">我的 <small>设置即演示</small></div>
+        <div class="sec-t">我的</div>
         <div class="row glass" style="margin-bottom:12px">
           <div class="r-ic" style="background:linear-gradient(135deg,#8b9dff,#e08bff);color:#fff;font-weight:800">M</div>
           <div class="r-main"><div class="r-t">我的账号</div><div class="r-d">在首页登录各音乐平台，歌单和收藏会显示在这里</div></div>
@@ -432,7 +421,7 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
 
         <div class="row glass">
           <div class="r-ic">🌙</div>
-          <div class="r-main"><div class="r-t">深色模式</div><div class="r-d">浅色 / 深色两套液态玻璃（待确认默认哪套）</div></div>
+          <div class="r-main"><div class="r-t">深色模式</div><div class="r-d">关 = 浅色，开 = 深色</div></div>
           <div class="jt on" id="themeJt"></div>
         </div>
         <div class="row glass" style="margin-top:10px">
@@ -442,19 +431,19 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
         </div>
         <div class="row glass" style="margin-top:10px">
           <div class="r-ic">🎤</div>
-          <div class="r-main"><div class="r-t">桌面歌词</div><div class="r-d">安卓悬浮窗（SYSTEM_ALERT_WINDOW，需授权），可拖动（待确认样式/双行/锁定）</div></div>
+          <div class="r-main"><div class="r-t">桌面歌词</div><div class="r-d">播放时在界面上层显示当前歌词，可拖动</div></div>
           <div class="jt" id="lyricJt"></div>
         </div>
         <div class="row glass" style="margin-top:10px">
           <div class="r-ic">⚡</div>
-          <div class="r-main"><div class="r-t">流畅优先模式</div><div class="r-d">减少动效层数，保证 60fps（待确认：120Hz 机型要不要拉满）</div></div>
+          <div class="r-main"><div class="r-t">流畅优先模式</div><div class="r-d">关掉一部分玻璃模糊，低端机更跟手</div></div>
           <div class="jt"></div>
         </div>
 
         <div class="sec-t">音质 <small>点开看完整档位</small></div>
         <button class="row glass" id="qSheetBtn" style="width:100%;text-align:left">
           <div class="r-ic">🎧</div>
-          <div class="r-main"><div class="r-t">当前音质：无损 FLAC</div><div class="r-d">实际可放音质受各平台版权与会员限制（待确认取源规则）</div></div>
+          <div class="r-main"><div class="r-t">当前音质：高品</div><div class="r-d">能播到哪一档，看平台给不给链、账号有没有会员</div></div>
           <span style="color:var(--ink3)">›</span>
         </button>
       </section>
@@ -500,7 +489,7 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
     <div class="dlg-mask" id="dlgMask"></div>
     <div class="dialog glass">
       <div class="dlg-t">删除歌单？</div>
-      <div class="dlg-d">《夜间飞行》将被删除且无法恢复，<br>共 32 首歌曲。</div>
+      <div class="dlg-d">确认删除这个歌单？删除后无法恢复。</div>
       <div class="dlg-btns">
         <button class="btn" id="dlgCancel">取消</button>
         <button class="btn danger" id="dlgOk">删除</button>
@@ -522,8 +511,7 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
         <div class="q-i glass" data-q="全景声">杜比全景声<span class="vip">会员 · 部分曲目</span></div>
       </div>
       <div class="sh-h2">正在播放 · 队列</div>
-      <div class="mini glass"><div class="m-c" style="background:linear-gradient(135deg,#3aa2ff,#7a5cff)">♪</div><div><div class="m-t">晚风信箱</div><div class="m-s">陈默 · QQ音乐</div></div><span class="q-ok">♪</span></div>
-      <div class="mini glass"><div class="m-c" style="background:linear-gradient(135deg,#ff6a8a,#e0447a)">♫</div><div><div class="m-t">雾里行走</div><div class="m-s">苏叶 · 网易云</div></div></div>
+      <div class="mini glass" id="qNow"><div class="m-c">♪</div><div><div class="m-t" id="qNowT">未在播放</div><div class="m-s" id="qNowA">点一首歌开始</div></div></div>
     </div>
   </div>
 
@@ -549,8 +537,8 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
 
   <!-- 桌面歌词悬浮条 -->
   <div class="lyric glass" id="lyric">
-    <div class="ly-t"><b>♪ 晚风信箱 · 陈默</b><span>拖动</span></div>
-    <div class="ly-l">晚风把信投进没有人海的黄昏</div>
+    <div class="ly-t"><b>♪ 歌词</b><span>拖动</span></div>
+    <div class="ly-l">播放后显示当前歌词</div>
   </div>
 
   <div class="toast glass" id="toast"></div>
@@ -651,10 +639,9 @@ dd.addEventListener('click',e=>{const i=e.target.closest('.dd-i');if(i){dd.class
 const dlg=$('#dlgWrap');
 function openDlg(){$('#app').classList.add('pushed');dlg.classList.remove('closing');dlg.classList.add('open')}
 function closeDlg(){dlg.classList.add('closing');setTimeout(()=>{dlg.classList.remove('open','closing');$('#app').classList.remove('pushed')},210)}
-$$('[data-del-real]').forEach(b=>b.addEventListener('click',openDlg));
 $('#dlgCancel').addEventListener('click',closeDlg);
 $('#dlgMask').addEventListener('click',closeDlg);
-$('#dlgOk').addEventListener('click',()=>{closeDlg();setTimeout(()=>toast('《夜间飞行》已删除（演示）'),240)});
+$('#dlgOk').addEventListener('click',closeDlg);
 
 /* ================= 6. 底部弹窗（弹簧 + 拖拽 + 阻力） ================= */
 const sw=$('#sheetWrap'), sheet=$('#sheet'), appEl=$('#app');
@@ -692,9 +679,7 @@ $('#sheetGrab').addEventListener('pointerup',()=>{
 
 /* ================= 7. 骨架屏 → 错落浮现 ================= */
 const feed=$('#feed');
-function loadFeed(){feed.classList.remove('loaded');
-  clearTimeout(loadFeed.t);loadFeed.t=setTimeout(()=>feed.classList.add('loaded'),1900)}
-loadFeed();
+function loadFeed(){feed.classList.remove('loaded'); loadHomeLive();}
 $('#reloadBtn').addEventListener('click',loadFeed);
 
 /* ================= 8. 分段标签：毛毛虫下划线 + 左右滑 ================= */
@@ -853,8 +838,9 @@ async function loadHomeLive(){
     const box=$('.feed-real');
     if(box && j.data){
       box.innerHTML=j.data.slice(0,6).map((it,i)=>`<div class="fd-item" style="--i:${i}" data-play='${JSON.stringify({src:it.src,id:it.id,title:it.title,artist:it.artist}).replace(/'/g,'&#39;')}'><div class="fd-cover" style="background:linear-gradient(135deg,#ff6a8a,#7a5cff)${it.cover?';background-image:url('+it.cover+');background-size:cover':''}">♪</div><div><div class="s-t">${it.title||''}</div><div class="s-a">${it.artist||''} · 网易云</div></div></div>`).join('');
+      feed.classList.add('loaded');
     }
-  }catch(_){}
+  }catch(_){ feed.classList.add('loaded'); }
   try{
     const j=await api('/api/recommend');
     const row=$('#hlRow'), disc=$('#discoverList');
@@ -903,8 +889,15 @@ async function openPlaylist(src,id,title,cover){
   }catch(e){ $('#dSub').textContent='加载失败 '+e.message; }
 }
 
-/* 合并去重按钮 */
-$('#mergeBtn').addEventListener('morphend',()=>toast('已重新合并去重：204 → 187 首（演示，规则待确认）'));
+async function loadMinePlaylists(){
+  const box=$('#playlistMine'); if(!box) return;
+  try{
+    const j=await api('/api/mine/playlists');
+    const list=j.data||[];
+    if(!list.length){ box.innerHTML='<div class="merge-note">登录网易云后，这里显示你的歌单。</div>'; return; }
+    box.innerHTML=list.map(it=>`<div class="mini glass" data-pl-src="${it.src}" data-pl-id="${it.id}" data-pl-title="${(it.title||'').replace(/"/g,'&quot;')}" data-pl-cover="${it.cover||''}"><div class="m-c" style="${it.cover?'background-image:url('+it.cover+');background-size:cover':'background:linear-gradient(150deg,#2b3a86,#c76a9a)'}"></div><div><div class="m-t">${it.title||''}</div><div class="m-s">${it.count||0} 首 · 网易云</div></div></div>`).join('');
+  }catch(e){ box.innerHTML='<div class="merge-note">歌单加载失败</div>'; }
+}
 
 /* ================= 12. 平台扫码 / Cookie 登录 ================= */
 const platName={qq:'QQ音乐',wy:'网易云',kg:'酷狗',qs:'汽水'};
@@ -930,8 +923,8 @@ function closeLogin(){
 const LOGIN_WEB_URL={
   qq:'https://ui.ptlogin2.qq.com/cgi-bin/login?style=9&appid=716027609&daid=383&pt_no_onekey=1&s_url='+encodeURIComponent('https://y.qq.com/'),
   wy:'https://music.163.com/m/login',
-  kg:'https://login-user.kugou.com/',
-  qs:'https://www.douyin.com/passport/sso/login/'
+  kg:'https://openplat-user.kugou.com/weixin/index.php?ktype=0&appid=1058&https=1&domain=kugou.com',
+  qs:'https://www.douyin.com/passport/sso/login/?aid=386088&next='+encodeURIComponent('https://www.qishui.com/')
 };
 /* Java 层检测到登录 Cookie 后回调这里 */
 window.__nativeLogin = async function(src, cookie){
@@ -940,6 +933,7 @@ window.__nativeLogin = async function(src, cookie){
     if(j && j.code === 0){
       toast(platName[src]+' 登录成功');
       await refreshLoginStatus();
+      await loadMinePlaylists();
     }else{
       toast((j && j.message) || '登录态保存失败');
     }
@@ -997,6 +991,8 @@ $('#loginCookieBtn').addEventListener('click',async()=>{
   }catch(e){toast('保存失败 '+e.message)}
 });
 refreshLoginStatus();
+loadMinePlaylists();
+if($('#meLogin')) $('#meLogin').addEventListener('click',e=>{e.preventDefault();e.stopPropagation();openLogin('wy')});
 </script>
 </body>
 </html>
