@@ -433,27 +433,40 @@ static cJSON *wy_search(JNIEnv *env, const std::string &q) {
     return out;
 }
 
-static cJSON *wy_playurl(JNIEnv *env, const std::string &sid, int br = 320000) {
-    std::string url = "https://music.163.com/api/song/enhance/player/url?id=" + sid +
-                      "&ids=[" + sid + "]&br=" + std::to_string(br);
-    Up up = up_get(env, url, "https://music.163.com/", cookie_of("wy"));
-    cJSON *j = loads_maybe(up.text);
-    cJSON *res = cJSON_CreateObject();
+static cJSON *wy_playurl(JNIEnv *env, const std::string &sid, int br = 0) {
     std::string urlout, msg;
     int brout = 0;
-    if (j) {
-        cJSON *data = Jarr(j, "data");
-        if (data && cJSON_GetArraySize(data) > 0) {
-            cJSON *d = cJSON_GetArrayItem(data, 0);
-            urlout = Jstr(d, "url");
-            brout = (int) Jnum(d, "br", 0);
+    // br>0 只试该档;默认先无损 999000（账号有无损权益时生效）再回退 320k
+    int tries[2] = {999000, 320000};
+    int t0 = 0, t1 = 2;
+    if (br == 128000) { tries[0] = 128000; t1 = 1; }
+    else if (br == 320000) { tries[0] = 320000; tries[1] = 128000; }
+    for (int t = t0; t < t1 && urlout.empty(); t++) {
+        int b = tries[t];
+        std::string url = "https://music.163.com/api/song/enhance/player/url?id=" + sid +
+                          "&ids=[" + sid + "]&br=" + std::to_string(b);
+        Up up = up_get(env, url, "https://music.163.com/", cookie_of("wy"));
+        cJSON *j = loads_maybe(up.text);
+        if (j) {
+            cJSON *data = Jarr(j, "data");
+            if (data && cJSON_GetArraySize(data) > 0) {
+                cJSON *d = cJSON_GetArrayItem(data, 0);
+                urlout = Jstr(d, "url");
+                brout = (int) Jnum(d, "br", 0);
+            }
+            cJSON_Delete(j);
         }
-        cJSON_Delete(j);
     }
+    cJSON *res = cJSON_CreateObject();
     if (urlout.empty()) msg = "无播放链（版权/需登录/需会员）";
     cJSON_AddStringToObject(res, "src", "wy");
     cJSON_AddStringToObject(res, "id", sid.c_str());
-    if (!urlout.empty()) cJSON_AddStringToObject(res, "url", urlout.c_str());
+    if (!urlout.empty()) {
+        cJSON_AddStringToObject(res, "url", urlout.c_str());
+        std::string q = brout >= 900000 ? "网易云 · 无损 FLAC"
+                        : brout >= 320000 ? "网易云 · 320kbps" : "网易云 · " + std::to_string(brout);
+        cJSON_AddStringToObject(res, "quality", q.c_str());
+    }
     cJSON_AddNumberToObject(res, "br", brout);
     if (msg.size()) cJSON_AddStringToObject(res, "message", msg.c_str());
     return res;
@@ -803,7 +816,7 @@ static cJSON *qq_search(JNIEnv *env, const std::string &q) {
     return out;
 }
 
-static cJSON *qq_playurl(JNIEnv *env, const std::string &songmid) {
+static cJSON *qq_playurl(JNIEnv *env, const std::string &songmid, int startTier = 0) {
     std::string ck = cookie_of("qq");
     std::string uin = "0";
     // parse uin from cookie
@@ -826,64 +839,79 @@ static cJSON *qq_playurl(JNIEnv *env, const std::string &songmid) {
         pos = semi + 1;
     }
 
-    cJSON *payload = cJSON_CreateObject();
-    cJSON *req = cJSON_CreateObject();
-    cJSON_AddStringToObject(req, "module", "vkey.GetVkeyServer");
-    cJSON_AddStringToObject(req, "method", "CgiGetVkey");
-    cJSON *param = cJSON_CreateObject();
-    cJSON_AddStringToObject(param, "guid", "10000");
-    cJSON *mids = cJSON_CreateArray();
-    cJSON_AddItemToArray(mids, cJSON_CreateString(songmid.c_str()));
-    cJSON_AddItemToObject(param, "songmid", mids);
-    cJSON *types = cJSON_CreateArray();
-    cJSON_AddItemToArray(types, cJSON_CreateNumber(0));
-    cJSON_AddItemToObject(param, "songtype", types);
-    cJSON_AddStringToObject(param, "uin", uin.c_str());
-    cJSON_AddNumberToObject(param, "loginflag", ck.empty() ? 0 : 1);
-    cJSON_AddStringToObject(param, "platform", "20");
-    cJSON_AddItemToObject(req, "param", param);
-    cJSON_AddItemToObject(payload, "req_0", req);
-    cJSON *comm = cJSON_CreateObject();
-    cJSON_AddStringToObject(comm, "uin", uin.c_str());
-    cJSON_AddStringToObject(comm, "format", "json");
-    cJSON_AddNumberToObject(comm, "ct", 24);
-    cJSON_AddNumberToObject(comm, "cv", 0);
-    cJSON_AddItemToObject(payload, "comm", comm);
-    std::string body = Jprint(payload);
-    cJSON_Delete(payload);
+    // SVIP 权益:从 FLAC 无损往下试（startTier 可由音质设置抬高起点）
+    if (startTier < 0 || startTier > 2) startTier = 0;
+    const char *tiers[3][2] = {{"F000", ".flac"}, {"M800", ".mp3"}, {"M500", ".mp3"}};
+    std::string url, filename, quality;
+    for (int t = startTier; t < 3 && url.empty(); t++) {
+        cJSON *payload = cJSON_CreateObject();
+        cJSON *req = cJSON_CreateObject();
+        cJSON_AddStringToObject(req, "module", "vkey.GetVkeyServer");
+        cJSON_AddStringToObject(req, "method", "CgiGetVkey");
+        cJSON *param = cJSON_CreateObject();
+        cJSON_AddStringToObject(param, "guid", "10000");
+        cJSON *mids = cJSON_CreateArray();
+        cJSON_AddItemToArray(mids, cJSON_CreateString(songmid.c_str()));
+        cJSON_AddItemToObject(param, "songmid", mids);
+        cJSON *fnames = cJSON_CreateArray();
+        std::string want = std::string(tiers[t][0]) + songmid + tiers[t][1];
+        cJSON_AddItemToArray(fnames, cJSON_CreateString(want.c_str()));
+        cJSON_AddItemToObject(param, "filename", fnames);
+        cJSON *types = cJSON_CreateArray();
+        cJSON_AddItemToArray(types, cJSON_CreateNumber(0));
+        cJSON_AddItemToObject(param, "songtype", types);
+        cJSON_AddStringToObject(param, "uin", uin.c_str());
+        cJSON_AddNumberToObject(param, "loginflag", ck.empty() ? 0 : 1);
+        cJSON_AddStringToObject(param, "platform", "20");
+        cJSON_AddItemToObject(req, "param", param);
+        cJSON_AddItemToObject(payload, "req_0", req);
+        cJSON *comm = cJSON_CreateObject();
+        cJSON_AddStringToObject(comm, "uin", uin.c_str());
+        cJSON_AddStringToObject(comm, "format", "json");
+        cJSON_AddNumberToObject(comm, "ct", 24);
+        cJSON_AddNumberToObject(comm, "cv", 0);
+        cJSON_AddItemToObject(payload, "comm", comm);
+        std::string body = Jprint(payload);
+        cJSON_Delete(payload);
 
-    Up up = up_post(env, "https://u.y.qq.com/cgi-bin/musicu.fcg", "https://y.qq.com/",
-                    "application/json", body, ck);
-    cJSON *j = loads_maybe(up.text);
-    cJSON *res = cJSON_CreateObject();
-    std::string purl, sip, filename;
-    if (j) {
-        cJSON *r0 = Jobj(j, "req_0");
-        if (r0) {
-            cJSON *data = Jobj(r0, "data");
-            if (data) {
-                cJSON *mi = Jarr(data, "midurlinfo");
-                if (mi && cJSON_GetArraySize(mi) > 0) {
-                    cJSON *info = cJSON_GetArrayItem(mi, 0);
-                    purl = Jstr(info, "purl");
-                    filename = Jstr(info, "filename");
-                }
-                cJSON *sipArr = Jarr(data, "sip");
-                if (sipArr && cJSON_GetArraySize(sipArr) > 0) {
-                    cJSON *s0 = cJSON_GetArrayItem(sipArr, 0);
-                    if (s0 && cJSON_IsString(s0) && cJSON_GetStringValue(s0)) {
-                        sip = cJSON_GetStringValue(s0);
+        Up up = up_post(env, "https://u.y.qq.com/cgi-bin/musicu.fcg", "https://y.qq.com/",
+                        "application/json", body, ck);
+        cJSON *j = loads_maybe(up.text);
+        if (j) {
+            cJSON *r0 = Jobj(j, "req_0");
+            if (r0) {
+                cJSON *data = Jobj(r0, "data");
+                if (data) {
+                    cJSON *mi = Jarr(data, "midurlinfo");
+                    if (mi && cJSON_GetArraySize(mi) > 0) {
+                        cJSON *info = cJSON_GetArrayItem(mi, 0);
+                        std::string purl = Jstr(info, "purl");
+                        std::string fn = Jstr(info, "filename");
+                        if (!purl.empty()) {
+                            std::string sip;
+                            cJSON *sipArr = Jarr(data, "sip");
+                            if (sipArr && cJSON_GetArraySize(sipArr) > 0) {
+                                cJSON *s0 = cJSON_GetArrayItem(sipArr, 0);
+                                if (s0 && cJSON_IsString(s0) && cJSON_GetStringValue(s0))
+                                    sip = cJSON_GetStringValue(s0);
+                            }
+                            url = sip + purl;
+                            filename = fn;
+                            quality = t == 0 ? "QQ SVIP · 无损 FLAC"
+                                             : t == 1 ? "QQ · 320kbps" : "QQ · 128kbps";
+                        }
                     }
                 }
             }
+            cJSON_Delete(j);
         }
-        cJSON_Delete(j);
     }
-    std::string url = purl.empty() ? "" : sip + purl;
+    cJSON *res = cJSON_CreateObject();
     cJSON_AddStringToObject(res, "src", "qq");
     cJSON_AddStringToObject(res, "id", songmid.c_str());
     if (!url.empty()) cJSON_AddStringToObject(res, "url", url.c_str());
     if (filename.size()) cJSON_AddStringToObject(res, "filename", filename.c_str());
+    if (quality.size()) cJSON_AddStringToObject(res, "quality", quality.c_str());
     if (url.empty()) cJSON_AddStringToObject(res, "message", "无 vkey（需登录 Cookie 或该曲需付费）");
     return res;
 }
@@ -2032,10 +2060,13 @@ static std::string dispatch(JNIEnv *env, const std::string &method, const std::s
         std::string sid = qget(q, "id");
         std::string stitle = qget(q, "title");
         std::string sartist = qget(q, "artist");
+        std::string sq = qget(q, "q", "lossless");   // std | high | lossless
+        int qStart = sq == "std" ? 2 : sq == "high" ? 1 : 0;
+        int qBr = sq == "std" ? 128000 : sq == "high" ? 320000 : 0;
         if (src.empty() || sid.empty()) return fail_json("missing src/id");
         cJSON *data = nullptr;
-        if (src == "wy") data = wy_playurl(env, sid);
-        else if (src == "qq") data = qq_playurl(env, sid);
+        if (src == "wy") data = wy_playurl(env, sid, qBr);
+        else if (src == "qq") data = qq_playurl(env, sid, qStart);
         else if (src == "kg") data = kg_playurl(env, sid);
         else if (src == "qs") data = qs_playurl(env, sid);
         else return fail_json("unknown src");
@@ -2057,8 +2088,8 @@ static std::string dispatch(JNIEnv *env, const std::string &method, const std::s
                     std::string aid = Jstr(h, "id");
                     if (aid.empty()) continue;
                     cJSON *alt2 = nullptr;
-                    if (alt == "qq") alt2 = qq_playurl(env, aid);
-                    else if (alt == "wy") alt2 = wy_playurl(env, aid);
+                    if (alt == "qq") alt2 = qq_playurl(env, aid, qStart);
+                    else if (alt == "wy") alt2 = wy_playurl(env, aid, qBr);
                     else if (alt == "kg") alt2 = kg_playurl(env, aid);
                     if (alt2 && !Jstr(alt2, "url").empty()) {
                         // 用搜索结果的标题/歌手信息补全
