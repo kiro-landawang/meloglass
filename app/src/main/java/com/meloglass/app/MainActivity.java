@@ -68,12 +68,13 @@ public class MainActivity extends Activity {
     private static final Map<String, Object[]> LOGIN_CFG = new HashMap<>();
     static {
         LOGIN_CFG.put("qq", new Object[]{
-                "https://ui.ptlogin2.qq.com/cgi-bin/login?style=9&appid=716027609&daid=383&pt_no_onekey=1&s_url="
-                        + "https%3A%2F%2Fy.qq.com%2F",
+                "https://xui.ptlogin2.qq.com/cgi-bin/xlogin?appid=716027609&daid=383&style=35"
+                        + "&s_url=https%3A%2F%2Fy.qq.com%2F&pt_3rd_aid=100497308",
                 new String[]{
                         "https://y.qq.com/", "https://i.y.qq.com/", "https://u.y.qq.com/",
-                        "https://ui.ptlogin2.qq.com/", "https://ptlogin2.qq.com/",
-                        "https://graph.qq.com/", "https://qq.com/"
+                        "https://ui.ptlogin2.qq.com/", "https://xui.ptlogin2.qq.com/",
+                        "https://ptlogin2.qq.com/", "https://graph.qq.com/",
+                        "https://open.weixin.qq.com/", "https://qq.com/"
                 },
                 new String[]{"qm_keyst", "uin=", "wxuin", "p_skey", "luin", "p_uin"}});
         LOGIN_CFG.put("kg", new Object[]{
@@ -81,11 +82,12 @@ public class MainActivity extends Activity {
                 new String[]{
                         "https://login-user.kugou.com/", "https://www.kugou.com/",
                         "https://m.kugou.com/", "https://user.kugou.com/",
-                        "https://openplat-user.kugou.com/", "https://open.weixin.qq.com/"
+                        "https://openplat-user.kugou.com/", "https://open.weixin.qq.com/",
+                        "https://graph.qq.com/", "https://xui.ptlogin2.qq.com/"
                 },
                 new String[]{"userid=", "kugou_login_name", "KuGoo=", "Kugoo", "token=", "KugooID"}});
         LOGIN_CFG.put("qs", new Object[]{
-                "https://www.douyin.com/passport/sso/login/?aid=386088&next=https%3A%2F%2Fwww.qishui.com%2F",
+                "https://sso.douyin.com/",
                 new String[]{
                         "https://www.douyin.com/", "https://sso.douyin.com/",
                         "https://www.qishui.com/", "https://api.qishui.com/",

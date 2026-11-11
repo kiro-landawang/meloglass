@@ -473,13 +473,14 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
     <div class="dlg-mask" id="loginMask"></div>
     <div class="dialog glass" style="width:310px;text-align:center">
       <div class="dlg-t" id="loginTitle">登录</div>
-      <div class="dlg-d" id="loginHint">用对应官方 App 扫码</div>
+      <div class="dlg-d" id="loginHint">选一种登录方式</div>
+      <div id="loginMethods" style="display:flex;flex-direction:column;gap:8px;margin:12px 0 4px"></div>
       <img id="loginQr" alt="qr" style="width:188px;height:188px;margin:14px auto 8px;border-radius:12px;background:#fff;display:none;object-fit:contain">
-      <div id="loginStatus" style="font-size:12px;color:var(--ink2);min-height:18px">准备中…</div>
-      <textarea id="loginCookie" placeholder="扫不了就粘贴官方网页 Cookie（只存本机 127.0.0.1 代理）" style="width:100%;height:64px;margin-top:10px;border-radius:12px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.18);color:inherit;padding:8px 10px;resize:none;font-size:11px"></textarea>
+      <div id="loginStatus" style="font-size:12px;color:var(--ink2);min-height:18px"></div>
+      <textarea id="loginCookie" placeholder="扫不了就粘贴官方网页 Cookie" style="display:none;width:100%;height:64px;margin-top:10px;border-radius:12px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.18);color:inherit;padding:8px 10px;resize:none;font-size:11px"></textarea>
       <div class="dlg-btns">
         <button class="btn" id="loginCancel">取消</button>
-        <button class="btn" id="loginCookieBtn">用 Cookie 登录</button>
+        <button class="btn" id="loginCookieBtn" style="display:none">用 Cookie 登录</button>
       </div>
     </div>
   </div>
@@ -919,14 +920,22 @@ function closeLogin(){
   clearInterval(loginTimer); loginTimer=0; loginJob='';
   setTimeout(()=>{loginWrap.classList.remove('open','closing');$('#app').classList.remove('pushed')},210);
 }
-/* APP 内：全部平台走内置浏览器打开官方登录页（QQ/微信/账号密码/扫码随官方支持） */
-const LOGIN_WEB_URL={
-  qq:'https://ui.ptlogin2.qq.com/cgi-bin/login?style=9&appid=716027609&daid=383&pt_no_onekey=1&s_url='+encodeURIComponent('https://y.qq.com/'),
-  wy:'https://music.163.com/m/login',
-  kg:'https://openplat-user.kugou.com/weixin/index.php?ktype=0&appid=1058&https=1&domain=kugou.com',
-  qs:'https://www.douyin.com/passport/sso/login/?aid=386088&next='+encodeURIComponent('https://www.qishui.com/')
+const LOGIN_METHODS={
+  qq:[
+    {label:'QQ 扫码 / 账号密码', url:'https://xui.ptlogin2.qq.com/cgi-bin/xlogin?appid=716027609&daid=383&style=35&s_url='+encodeURIComponent('https://y.qq.com/')+'&pt_3rd_aid=100497308'},
+    {label:'微信登录', url:'https://open.weixin.qq.com/connect/qrconnect?appid=wx48db31d50e334801&redirect_uri='+encodeURIComponent('https://y.qq.com/portal/wx_redirect.html')+'&response_type=code&scope=snsapi_login&state=yqq'}
+  ],
+  kg:[
+    {label:'微信登录', url:'https://openplat-user.kugou.com/weixin/index.php?ktype=0&appid=1058&https=1&domain=kugou.com'},
+    {label:'QQ 登录', url:'https://openplat-user.kugou.com/qq/?appid=1058&https=1&domain=kugou.com'}
+  ],
+  qs:[
+    {label:'抖音登录', url:'https://sso.douyin.com/'}
+  ],
+  wy:[
+    {label:'网易云登录', url:'https://music.163.com/m/login'}
+  ]
 };
-/* Java 层检测到登录 Cookie 后回调这里 */
 window.__nativeLogin = async function(src, cookie){
   try{
     const j = await apiPost('/api/login/cookie', {src, cookie});
@@ -939,34 +948,37 @@ window.__nativeLogin = async function(src, cookie){
     }
   }catch(e){ toast('登录态保存失败 '+e.message); }
 };
-async function openLogin(src){
-  if(HAS_BRIDGE && LOGIN_WEB_URL[src]){
-    toast('打开 '+platName[src]+' 官方登录页…');
-    window.AndroidBridge.openWebLogin(src, LOGIN_WEB_URL[src]);
-    return;
+function startWebLogin(src, url){
+  closeLogin();
+  if(HAS_BRIDGE){
+    toast('打开登录页…');
+    window.AndroidBridge.openWebLogin(src, url);
+  }else{
+    window.open(url, '_blank');
   }
-  loginSrc=src; loginJob='';
+}
+function openLogin(src){
+  loginSrc=src;
+  const methods=LOGIN_METHODS[src]||[];
   $('#loginTitle').textContent='登录 '+platName[src];
-  $('#loginHint').textContent='拉取二维码中…';
+  $('#loginHint').textContent=methods.length>1?'选一种登录方式':'打开官方登录页';
   $('#loginStatus').textContent='';
-  $('#loginCookie').value='';
-  $('#loginQr').style.display='none'; $('#loginQr').src='';
+  $('#loginQr').style.display='none';
+  $('#loginCookie').style.display='none';
+  $('#loginCookieBtn').style.display='none';
+  const box=$('#loginMethods');
+  box.innerHTML=methods.map(m=>`<button class="btn" data-login-url="${m.url.replace(/"/g,'&quot;')}">${m.label}</button>`).join('');
   $('#app').classList.add('pushed');
   loginWrap.classList.remove('closing'); loginWrap.classList.add('open');
-  try{
-    const j=await api('/api/login/qr?src='+src);
-    const d=j.data||{};
-    $('#loginHint').textContent=d.hint||'';
-    if(d.qrimg){ $('#loginQr').src=d.qrimg; $('#loginQr').style.display='block'; }
-    else if(d.url){
-      $('#loginQr').src='https://api.qrserver.com/v1/create-qr-code/?size=188x188&data='+encodeURIComponent(d.url);
-      $('#loginQr').style.display='block';
-    }
-    if(d.job){ loginJob=d.job; $('#loginStatus').textContent='等待扫码…';
-      loginTimer=setInterval(pollLogin,1600); pollLogin(); }
-    else $('#loginStatus').textContent='此平台请粘贴 Cookie';
-  }catch(e){ $('#loginStatus').textContent='拉码失败：'+e.message; }
+  if(HAS_BRIDGE && methods.length===1){
+    startWebLogin(src, methods[0].url);
+  }
 }
+$('#loginMethods').addEventListener('click',e=>{
+  const b=e.target.closest('[data-login-url]');
+  if(!b||!loginSrc) return;
+  startWebLogin(loginSrc, b.dataset.loginUrl);
+});
 async function pollLogin(){
   if(!loginJob||!loginSrc) return;
   try{
