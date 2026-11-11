@@ -7,3 +7,4 @@ _*.tmp
 _arts.json
 _joblog.txt
 _mg.zip
+dist/
