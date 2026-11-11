@@ -264,7 +264,7 @@ static const char *plat_hint(const std::string &src) {
     if (src == "wy") return "官方页面登录（账号密码 / 扫码都行）";
     if (src == "qq") return "官方页面登录（QQ / 微信都行）";
     if (src == "kg") return "官方页面登录";
-    if (src == "qs") return "用抖音授权登录";
+    if (src == "qs") return "汽水官方网页登录（抖音扫码）";
     return "";
 }
 
@@ -641,6 +641,111 @@ static cJSON *wy_user_playlists(JNIEnv *env) {
 }
 
 // ---------------------------------------------------------------- QQ Music
+
+/** 从 QQ cookie 里解析 uin（uin=o123456 或 uin=123456）。 */
+static std::string qq_uin_from_cookie(const std::string &cookie) {
+    size_t pos = 0;
+    while (pos <= cookie.size()) {
+        size_t amp = cookie.find(';', pos);
+        std::string pair = cookie.substr(pos, amp == std::string::npos ? std::string::npos : amp - pos);
+        size_t eq = pair.find('=');
+        if (eq != std::string::npos) {
+            std::string k = pair.substr(0, eq);
+            std::string v = pair.substr(eq + 1);
+            size_t a = k.find_first_not_of(" \t");
+            size_t b = k.find_last_not_of(" \t");
+            k = a == std::string::npos ? "" : k.substr(a, b - a + 1);
+            a = v.find_first_not_of(" \t");
+            b = v.find_last_not_of(" \t");
+            v = a == std::string::npos ? "" : v.substr(a, b - a + 1);
+            if (k == "uin" && !v.empty()) {
+                if (v[0] == 'o') v = v.substr(1);
+                return v;
+            }
+        }
+        if (amp == std::string::npos) break;
+        pos = amp + 1;
+    }
+    return "";
+}
+
+/** QQ g_tk：对 qm_keyst（优先）或 p_skey 做 5381 哈希。 */
+static std::string qq_gtk(const std::string &cookie) {
+    std::string skey;
+    size_t pos = 0;
+    while (pos <= cookie.size()) {
+        size_t amp = cookie.find(';', pos);
+        std::string pair = cookie.substr(pos, amp == std::string::npos ? std::string::npos : amp - pos);
+        size_t eq = pair.find('=');
+        if (eq != std::string::npos) {
+            std::string k = pair.substr(0, eq);
+            std::string v = pair.substr(eq + 1);
+            size_t a = k.find_first_not_of(" \t");
+            size_t b = k.find_last_not_of(" \t");
+            k = a == std::string::npos ? "" : k.substr(a, b - a + 1);
+            a = v.find_first_not_of(" \t");
+            b = v.find_last_not_of(" \t");
+            v = a == std::string::npos ? "" : v.substr(a, b - a + 1);
+            if (k == "qm_keyst" && v.size() > 5) { skey = v; break; }
+            if (k == "p_skey" && v.size() > 5 && skey.empty()) skey = v;
+        }
+        if (amp == std::string::npos) break;
+        pos = amp + 1;
+    }
+    int h = 5381;
+    for (char c : skey) h = h + (h << 5) + (unsigned char) c;
+    return std::to_string(h & 0x7fffffff);
+}
+
+/** QQ 登录用户的歌单（musicu.fcg playlist.GetUserPlaylist）。 */
+static cJSON *qq_user_playlists(JNIEnv *env) {
+    cJSON *out = cJSON_CreateArray();
+    std::string ck = cookie_of("qq");
+    if (ck.empty()) return out;
+    std::string uin = qq_uin_from_cookie(ck);
+    if (uin.empty()) return out;
+    std::string gtk = qq_gtk(ck);
+    std::string data = "{\"comm\":{\"ct\":19,\"cv\":1848,\"uin\":" + uin + ",\"format\":\"json\"},"
+                       "\"req_1\":{\"module\":\"playlist.GetUserPlaylist\","
+                       "\"method\":\"GetUserPlaylist\","
+                       "\"param\":{\"uin\":" + uin + ",\"hostUin\":" + uin +
+                       ",\"QZFee\":1,\"succ\":3,\"count\":50}}}";
+    std::string url = "https://u.y.qq.com/cgi-bin/musicu.fcg?g_tk=" + gtk +
+                      "&loginUin=" + uin + "&hostUin=0&format=json&inCharset=utf8&outCharset=utf-8"
+                      "&notice=0&platform=yqq.json&needNewCode=0&data=" + url_encode(data);
+    Up up = up_get(env, url, "https://y.qq.com/", ck);
+    cJSON *j = loads_maybe(up.text);
+    if (j) {
+        cJSON *list = nullptr;
+        cJSON *r1 = Jobj(j, "req_1");
+        if (r1) {
+            cJSON *d = Jobj(r1, "data");
+            if (d) list = Jarr(d, "list");
+        }
+        if (list) {
+            int n = cJSON_GetArraySize(list);
+            for (int i = 0; i < n; i++) {
+                cJSON *it = cJSON_GetArrayItem(list, i);
+                std::string tid = Jstr(it, "tid");
+                if (tid.empty()) {
+                    cJSON *tidit = cJSON_GetObjectItemCaseSensitive(it, "tid");
+                    if (tidit && cJSON_IsNumber(tidit))
+                        tid = std::to_string((long long) tidit->valuedouble);
+                }
+                if (tid.empty()) continue;
+                cJSON *item = cJSON_CreateObject();
+                cJSON_AddStringToObject(item, "src", "qq");
+                cJSON_AddStringToObject(item, "id", tid.c_str());
+                cJSON_AddStringToObject(item, "title", Jstr(it, "diss_name").c_str());
+                cJSON_AddStringToObject(item, "cover", Jstr(it, "diss_cover").c_str());
+                cJSON_AddNumberToObject(item, "count", Jnum(it, "song_cnt", 0));
+                cJSON_AddItemToArray(out, item);
+            }
+        }
+        cJSON_Delete(j);
+    }
+    return out;
+}
 
 static cJSON *qq_search(JNIEnv *env, const std::string &q) {
     std::string url = "https://c.y.qq.com/soso/fcgi-bin/search_for_qq_cp?g_tk=5381&uin=0&format=json"
@@ -1695,6 +1800,11 @@ static std::string dispatch(JNIEnv *env, const std::string &method, const std::s
 
     if (p == "/api/mine/playlists") {
         cJSON *data = wy_user_playlists(env);
+        cJSON *qqs = qq_user_playlists(env);
+        int n = cJSON_GetArraySize(qqs);
+        for (int i = 0; i < n; i++)
+            cJSON_AddItemToArray(data, cJSON_Duplicate(cJSON_GetArrayItem(qqs, i), 1));
+        cJSON_Delete(qqs);
         cJSON *j = cJSON_CreateObject();
         cJSON_AddNumberToObject(j, "code", 0);
         cJSON_AddItemToObject(j, "data", data);

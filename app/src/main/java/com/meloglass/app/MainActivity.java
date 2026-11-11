@@ -87,11 +87,11 @@ public class MainActivity extends Activity {
                 },
                 new String[]{"userid=", "kugou_login_name", "KuGoo=", "Kugoo", "token=", "KugooID"}});
         LOGIN_CFG.put("qs", new Object[]{
-                "https://sso.douyin.com/",
+                "https://music.douyin.com/",
                 new String[]{
+                        "https://music.douyin.com/", "https://qishui.douyin.com/",
                         "https://www.douyin.com/", "https://sso.douyin.com/",
-                        "https://www.qishui.com/", "https://api.qishui.com/",
-                        "https://www.toutiao.com/"
+                        "https://www.qishui.com/", "https://api.qishui.com/"
                 },
                 new String[]{"sessionid", "sid_tt", "sid_guard", "sid_ucp_v1"}});
         LOGIN_CFG.put("wy", new Object[]{
@@ -104,7 +104,7 @@ public class MainActivity extends Activity {
     static {
         LOGIN_TITLE.put("qq", "QQ音乐（支持 QQ / 微信登录）");
         LOGIN_TITLE.put("kg", "酷狗音乐");
-        LOGIN_TITLE.put("qs", "汽水音乐（抖音授权）");
+        LOGIN_TITLE.put("qs", "汽水音乐（抖音扫码登录）");
         LOGIN_TITLE.put("wy", "网易云音乐");
     }
 
@@ -216,7 +216,10 @@ public class MainActivity extends Activity {
 
             @Override
             public void onPageFinished(WebView v, String u) {
+                // SPA 页面登录按钮渲染较慢，多注入几次提高命中
                 injectLoginHelper(src);
+                uiHandler.postDelayed(() -> injectLoginHelper(src), 1500);
+                uiHandler.postDelayed(() -> injectLoginHelper(src), 3500);
             }
         });
         loginWebView.setWebChromeClient(new WebChromeClient());
