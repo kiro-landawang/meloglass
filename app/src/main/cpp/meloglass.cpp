@@ -148,6 +148,7 @@ struct Up {
     int st = 0;
     std::string text;        // decoded utf-8 body
     std::string b64;         // raw body base64 (for binary responses)
+    std::string url;         // final URL after redirects
     std::vector<std::string> sc; // set-cookie lines
 };
 
@@ -195,6 +196,7 @@ static Up http_call(JNIEnv *env, const std::string &url, const std::string &meth
     if (j) {
         up.st = (int) Jnum(j, "s", 0);
         up.b64 = Jstr(j, "b64");
+        up.url = Jstr(j, "url");
         std::vector<uint8_t> raw = b64decode(up.b64);
         up.text.assign(raw.begin(), raw.end());
         cJSON *sc = Jarr(j, "sc");
@@ -1587,6 +1589,313 @@ static std::string merge_key(cJSON *item) {
     return t + "|" + a;
 }
 
+// ---------------------------------------------- local playlists (import/merge)
+
+/** 从分享文本里抽第一个 http(s) URL。 */
+static std::string extract_url(const std::string &text) {
+    size_t p = text.find("http");
+    while (p != std::string::npos) {
+        if (text.compare(p, 7, "http://") == 0 || text.compare(p, 8, "https://") == 0) {
+            size_t e = p;
+            while (e < text.size() && text[e] != ' ' && text[e] != '\t' &&
+                   text[e] != '\r' && text[e] != '\n' && text[e] != '"')
+                e++;
+            return text.substr(p, e - p);
+        }
+        p = text.find("http", p + 4);
+    }
+    return "";
+}
+
+/** host 抽取。 */
+static std::string url_host(const std::string &url) {
+    size_t hs = url.find("://");
+    if (hs == std::string::npos) return "";
+    std::string rest = url.substr(hs + 3);
+    size_t slash = rest.find('/');
+    return slash == std::string::npos ? rest : rest.substr(0, slash);
+}
+
+/** query 参数。 */
+static std::string url_query(const std::string &url, const std::string &key) {
+    size_t qm = url.find('?');
+    if (qm == std::string::npos) return "";
+    std::string qs = url.substr(qm + 1);
+    size_t pos = 0;
+    while (pos <= qs.size()) {
+        size_t amp = qs.find('&', pos);
+        std::string pair = qs.substr(pos, amp == std::string::npos ? std::string::npos : amp - pos);
+        size_t eq = pair.find('=');
+        if (eq != std::string::npos && pair.substr(0, eq) == key)
+            return pair.substr(eq + 1);
+        if (amp == std::string::npos) break;
+        pos = amp + 1;
+    }
+    return "";
+}
+
+/** token 扫描：before 之后的连续 [A-Za-z0-9]+。 */
+static std::string token_after(const std::string &s, const std::string &before) {
+    size_t p = s.find(before);
+    if (p == std::string::npos) return "";
+    p += before.size();
+    std::string out;
+    while (p < s.size() && (isalnum((unsigned char) s[p]) || s[p] == '_')) out += s[p++];
+    return out;
+}
+
+/** HTML 里 key 后面的连续数字（specialid=123 / "specialid":123）。 */
+static std::string html_num_field(const std::string &html, const std::string &key) {
+    size_t p = html.find(key);
+    if (p == std::string::npos) return "";
+    p += key.size();
+    while (p < html.size() && (html[p] == '"' || html[p] == '\'' || html[p] == ':' ||
+                               html[p] == '=' || html[p] == ' ')) p++;
+    std::string num;
+    while (p < html.size() && isdigit((unsigned char) html[p])) num += html[p++];
+    return num;
+}
+
+/** HTML JSON 字符串字段（简易 \uXXXX 转义）。 */
+static std::string html_json_str(const std::string &html, const std::string &key) {
+    size_t p = html.find(key);
+    if (p == std::string::npos) return "";
+    p += key.size();
+    while (p < html.size() && (html[p] == ':' || html[p] == ' ')) p++;
+    if (p >= html.size() || html[p] != '"') return "";
+    p++;
+    std::string out;
+    while (p < html.size() && html[p] != '"') {
+        if (html[p] == '\\' && p + 1 < html.size()) {
+            char c = html[p + 1];
+            if (c == 'n') out += '\n';
+            else if (c == 't') out += '\t';
+            else if (c == 'u' && p + 5 < html.size()) {
+                int code = 0;
+                for (int i = 0; i < 4; i++) {
+                    char h = html[p + 2 + i];
+                    code = code * 16 + (isdigit((unsigned char) h) ? h - '0'
+                            : (tolower((unsigned char) h) - 'a' + 10));
+                }
+                if (code < 0x80) out += (char) code;
+                else if (code < 0x800) {
+                    out += (char) (0xC0 | (code >> 6));
+                    out += (char) (0x80 | (code & 0x3F));
+                } else {
+                    out += (char) (0xE0 | (code >> 12));
+                    out += (char) (0x80 | ((code >> 6) & 0x3F));
+                    out += (char) (0x80 | (code & 0x3F));
+                }
+                p += 4;
+            } else out += c;
+            p += 2;
+        } else out += html[p++];
+    }
+    return out;
+}
+
+/** 酷狗歌单页：special/single/<hash>.html → specialid → m.kugou plist 分页。 */
+static cJSON *kg_playlist_special(JNIEnv *env, const std::string &hash) {
+    cJSON *res = cJSON_CreateObject();
+    cJSON *tracks = cJSON_CreateArray();
+    Up up = up_get(env, "https://www.kugou.com/yy/special/single/" + hash + ".html",
+                   "https://www.kugou.com/");
+    std::string title = html_json_str(up.text, "\"specialname\"");
+    if (title.empty()) title = html_json_str(up.text, "\"specialname\":");
+    if (title.empty()) title = html_json_str(up.text, "<title>");
+    std::string sid = html_num_field(up.text, "\"specialid\"");
+    if (sid.empty()) sid = html_num_field(up.text, "specialid=");
+    if (sid.empty()) {
+        cJSON_AddStringToObject(res, "error", "酷狗歌单页解析失败（没找到 specialid）");
+        cJSON_AddItemToObject(res, "tracks", tracks);
+        return res;
+    }
+    if (!title.empty()) cJSON_AddStringToObject(res, "title", title.c_str());
+    for (int page = 1; page <= 5; page++) {
+        std::string u = "https://m.kugou.com/plist/index&json=true&specialid=" + sid +
+                        "&page=" + std::to_string(page) + "&pagesize=100";
+        Up pu = up_get(env, u, "https://m.kugou.com/");
+        cJSON *j = loads_maybe(pu.text);
+        if (!j) break;
+        cJSON *songs = Jarr(j, "songs");
+        int got = 0;
+        if (songs) {
+            int n = cJSON_GetArraySize(songs);
+            for (int i = 0; i < n; i++) {
+                cJSON *s = cJSON_GetArrayItem(songs, i);
+                std::string fn = Jstr(s, "filename");   // "歌手 - 歌名"
+                std::string fh = Jstr(s, "hash");
+                if (fh.empty()) continue;
+                std::string artist, name = fn;
+                size_t dash = fn.find(" - ");
+                if (dash != std::string::npos) {
+                    artist = fn.substr(0, dash);
+                    name = fn.substr(dash + 3);
+                }
+                cJSON *item = cJSON_CreateObject();
+                cJSON_AddStringToObject(item, "src", "kg");
+                cJSON_AddStringToObject(item, "id", fh.c_str());
+                cJSON_AddStringToObject(item, "title", name.c_str());
+                cJSON_AddStringToObject(item, "artist", artist.c_str());
+                cJSON_AddStringToObject(item, "quality", "酷狗");
+                cJSON_AddItemToArray(tracks, item);
+                got++;
+            }
+        }
+        cJSON_Delete(j);
+        if (got < 100) break;
+    }
+    cJSON_AddItemToObject(res, "tracks", tracks);
+    return res;
+}
+
+/** 解析四平台歌单分享链接 → {src,title,tracks[]} 或 {error}。 */
+static cJSON *import_parse(JNIEnv *env, const std::string &raw) {
+    std::string url = extract_url(raw);
+    cJSON *res = cJSON_CreateObject();
+    if (url.empty()) {
+        cJSON_AddStringToObject(res, "error", "没识别到链接，把歌单分享口令整段粘贴进来");
+        return res;
+    }
+    std::string host = url_host(url);
+    // 短链先展开拿最终 URL
+    if (host == "t1.kugou.com" || host == "t.kugou.com" || host == "qishui.douyin.com" ||
+        host == "v.douyin.com" || host == "c6.y.qq.com") {
+        Up up = up_get(env, url, "");
+        if (!up.url.empty()) { url = up.url; host = url_host(url); }
+    }
+
+    cJSON *data = nullptr;
+    std::string src;
+    if (url.find("music.163.com") != std::string::npos ||
+        url.find("163.com") != std::string::npos) {
+        src = "wy";
+        std::string pid = url_query(url, "id");
+        if (pid.empty()) pid = token_after(url, "/playlist/");
+        if (pid.empty()) pid = token_after(url, "playlist%3Fid%3D");
+        if (pid.empty()) {
+            data = cJSON_CreateObject();
+            cJSON_AddStringToObject(data, "error", "网易云链接里没找到歌单 id");
+        } else {
+            data = wy_playlist(env, pid);
+        }
+    } else if (url.find("qq.com") != std::string::npos) {
+        src = "qq";
+        std::string pid = url_query(url, "id");
+        if (pid.empty()) pid = token_after(url, "/playlist/");
+        if (pid.empty()) pid = token_after(url, "taoge.html%3Fid%3D");
+        if (pid.empty()) {
+            data = cJSON_CreateObject();
+            cJSON_AddStringToObject(data, "error", "QQ 链接里没找到歌单 id");
+        } else {
+            data = qq_playlist(env, pid);
+        }
+    } else if (url.find("kugou.com") != std::string::npos) {
+        src = "kg";
+        std::string h = token_after(url, "/special/single/");
+        if (h.empty()) h = token_after(url, "special/single%2F");
+        if (h.empty()) {
+            data = cJSON_CreateObject();
+            cJSON_AddStringToObject(data, "error",
+                "酷狗链接没识别出歌单页；在酷狗 APP 打开歌单 → 分享 → 复制链接（含 /special/single/）再试");
+        } else {
+            data = kg_playlist_special(env, h);
+        }
+    } else if (url.find("douyin.com") != std::string::npos) {
+        src = "qs";
+        std::string pid = token_after(url, "/playlist/");
+        if (pid.empty()) pid = url_query(url, "playlist_id");
+        if (pid.empty()) {
+            data = cJSON_CreateObject();
+            cJSON_AddStringToObject(data, "error",
+                "汽水链接没识别出歌单 id；在汽水/抖音网页版歌单页地址栏复制链接（含 /playlist/数字）再试");
+        } else {
+            data = qs_playlist(env, pid);
+        }
+    } else {
+        cJSON_AddStringToObject(res, "error",
+            "没认出这个链接的平台（支持网易云 / QQ / 酷狗 / 汽水的歌单分享链接）");
+        return res;
+    }
+    if (!data) {
+        cJSON_AddStringToObject(res, "error", "解析失败");
+        return res;
+    }
+    cJSON_AddStringToObject(res, "src", src.c_str());
+    if (cJSON_GetObjectItemCaseSensitive(data, "error")) {
+        cJSON_AddItemToObject(res, "error", cJSON_DetachItemFromObject(data, "error"));
+    } else {
+        cJSON *title = cJSON_DetachItemFromObject(data, "title");
+        if (title) cJSON_AddItemToObject(res, "title", title);
+        cJSON *cover = cJSON_DetachItemFromObject(data, "cover");
+        if (cover) cJSON_AddItemToObject(res, "cover", cover);
+        cJSON *tracks = cJSON_DetachItemFromObject(data, "tracks");
+        if (tracks) cJSON_AddItemToObject(res, "tracks", tracks);
+        else cJSON_AddItemToObject(res, "tracks", cJSON_CreateArray());
+    }
+    cJSON_Delete(data);
+    return res;
+}
+
+/** 本地歌单持久化：mg_local_pls.json = 数组 [{id,title,cover,tracks:[...]}] */
+static cJSON *localpls_load(JNIEnv *env) {
+    std::string raw = store_read(env, "mg_local_pls.json");
+    cJSON *arr = raw.empty() ? nullptr : cJSON_Parse(raw.c_str());
+    if (!arr || !cJSON_IsArray(arr)) {
+        if (arr) cJSON_Delete(arr);
+        return cJSON_CreateArray();
+    }
+    return arr;
+}
+
+static void localpls_save(JNIEnv *env, cJSON *arr) {
+    store_write(env, "mg_local_pls.json", Jprint(arr));
+}
+
+/** 按找 id；没有就生成 local_<ms>。返回 id 字符串。 */
+static std::string localpls_upsert(JNIEnv *env, const char *id, const char *title,
+                                   const char *cover, cJSON *tracks) {
+    cJSON *arr = localpls_load(env);
+    std::string outId = id && *id ? id : "";
+    if (outId.empty()) {
+        long long ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+        outId = "local_" + std::to_string(ms);
+    }
+    cJSON *hit = nullptr;
+    int n = cJSON_GetArraySize(arr);
+    for (int i = 0; i < n; i++) {
+        cJSON *it = cJSON_GetArrayItem(arr, i);
+        if (Jstr(it, "id") == outId) { hit = it; break; }
+    }
+    cJSON *rec;
+    if (hit) {
+        rec = hit;
+    } else {
+        rec = cJSON_CreateObject();
+        cJSON_AddStringToObject(rec, "id", outId.c_str());
+        cJSON_AddItemToArray(arr, rec);
+    }
+    if (title && *title) cJSON_ReplaceItemInObjectCaseSensitive(rec, "title", cJSON_CreateString(title));
+    else if (!cJSON_GetObjectItemCaseSensitive(rec, "title"))
+        cJSON_AddStringToObject(rec, "title", "导入的歌单");
+    if (cover && *cover) {
+        if (cJSON_GetObjectItemCaseSensitive(rec, "cover"))
+            cJSON_ReplaceItemInObjectCaseSensitive(rec, "cover", cJSON_CreateString(cover));
+        else cJSON_AddStringToObject(rec, "cover", cover);
+    }
+    if (tracks) {
+        if (cJSON_GetObjectItemCaseSensitive(rec, "tracks"))
+            cJSON_ReplaceItemInObjectCaseSensitive(rec, "tracks", tracks);
+        else cJSON_AddItemToObject(rec, "tracks", tracks);
+    } else if (!cJSON_GetObjectItemCaseSensitive(rec, "tracks")) {
+        cJSON_AddItemToObject(rec, "tracks", cJSON_CreateArray());
+    }
+    localpls_save(env, arr);
+    cJSON_Delete(arr);
+    return outId;
+}
+
 static std::string dispatch(JNIEnv *env, const std::string &method, const std::string &path,
                             const std::string &body) {
     load_sessions(env);
@@ -1717,10 +2026,12 @@ static std::string dispatch(JNIEnv *env, const std::string &method, const std::s
         return s;
     }
 
-    // ---- playurl
+    // ---- playurl（主源失败时自动跨平台换源：QQ 优先——SVIP 权益直接生效）
     if (p == "/api/playurl") {
         std::string src = qget(q, "src");
         std::string sid = qget(q, "id");
+        std::string stitle = qget(q, "title");
+        std::string sartist = qget(q, "artist");
         if (src.empty() || sid.empty()) return fail_json("missing src/id");
         cJSON *data = nullptr;
         if (src == "wy") data = wy_playurl(env, sid);
@@ -1728,6 +2039,57 @@ static std::string dispatch(JNIEnv *env, const std::string &method, const std::s
         else if (src == "kg") data = kg_playurl(env, sid);
         else if (src == "qs") data = qs_playurl(env, sid);
         else return fail_json("unknown src");
+
+        std::string purl = Jstr(data, "url");
+        if (purl.empty() && !stitle.empty()) {
+            std::string query = stitle;
+            if (!sartist.empty()) query += " " + sartist;
+            const char *order[3] = {"qq", "wy", "kg"};
+            auto trySrc = [&](const std::string &alt) -> cJSON * {
+                cJSON *hits = nullptr;
+                if (alt == "qq") hits = qq_search(env, query);
+                else if (alt == "wy") hits = wy_search(env, query);
+                else if (alt == "kg") hits = kg_search(env, query);
+                if (!hits) return nullptr;
+                int n = cJSON_GetArraySize(hits);
+                for (int i = 0; i < n && i < 3; i++) {
+                    cJSON *h = cJSON_GetArrayItem(hits, i);
+                    std::string aid = Jstr(h, "id");
+                    if (aid.empty()) continue;
+                    cJSON *alt2 = nullptr;
+                    if (alt == "qq") alt2 = qq_playurl(env, aid);
+                    else if (alt == "wy") alt2 = wy_playurl(env, aid);
+                    else if (alt == "kg") alt2 = kg_playurl(env, aid);
+                    if (alt2 && !Jstr(alt2, "url").empty()) {
+                        // 用搜索结果的标题/歌手信息补全
+                        std::string at = Jstr(h, "title");
+                        std::string aa = Jstr(h, "artist");
+                        if (!at.empty() && Jstr(alt2, "title").empty())
+                            cJSON_AddStringToObject(alt2, "title", at.c_str());
+                        if (!aa.empty() && Jstr(alt2, "artist").empty())
+                            cJSON_AddStringToObject(alt2, "artist", aa.c_str());
+                        cJSON_AddStringToObject(alt2, "switched_from", src_label(src));
+                        cJSON_AddStringToObject(alt2, "switched_to", src_label(alt));
+                        cJSON_Delete(hits);
+                        return alt2;
+                    }
+                    if (alt2) cJSON_Delete(alt2);
+                }
+                cJSON_Delete(hits);
+                return nullptr;
+            };
+            for (int i = 0; i < 3; i++) {
+                std::string alt = order[i];
+                if (alt == src) continue;
+                cJSON *alt2 = trySrc(alt);
+                if (alt2) {
+                    cJSON_Delete(data);
+                    data = alt2;
+                    break;
+                }
+            }
+        }
+
         cJSON *j = cJSON_CreateObject();
         cJSON_AddNumberToObject(j, "code", 0);
         cJSON_AddItemToObject(j, "data", data);
@@ -1808,6 +2170,134 @@ static std::string dispatch(JNIEnv *env, const std::string &method, const std::s
         cJSON *j = cJSON_CreateObject();
         cJSON_AddNumberToObject(j, "code", 0);
         cJSON_AddItemToObject(j, "data", data);
+        std::string s = Jprint(j);
+        cJSON_Delete(j);
+        return s;
+    }
+
+    // ---- local playlists (imported, mergeable)
+    if (p == "/api/local/playlists" && method == "GET") {
+        cJSON *data = localpls_load(env);
+        // summary: keep order but only id/title/cover/count
+        cJSON *sum = cJSON_CreateArray();
+        int n = cJSON_GetArraySize(data);
+        for (int i = 0; i < n; i++) {
+            cJSON *it = cJSON_GetArrayItem(data, i);
+            cJSON *o = cJSON_CreateObject();
+            cJSON_AddStringToObject(o, "id", Jstr(it, "id").c_str());
+            cJSON_AddStringToObject(o, "title", Jstr(it, "title").c_str());
+            cJSON_AddStringToObject(o, "cover", Jstr(it, "cover").c_str());
+            cJSON *tr = Jarr(it, "tracks");
+            cJSON_AddNumberToObject(o, "count", tr ? cJSON_GetArraySize(tr) : 0);
+            cJSON_AddItemToArray(sum, o);
+        }
+        cJSON_Delete(data);
+        cJSON *j = cJSON_CreateObject();
+        cJSON_AddNumberToObject(j, "code", 0);
+        cJSON_AddItemToObject(j, "data", sum);
+        std::string s = Jprint(j);
+        cJSON_Delete(j);
+        return s;
+    }
+
+    if (p == "/api/local/playlist" && method == "GET") {
+        std::string id = qget(q, "id");
+        cJSON *arr = localpls_load(env);
+        cJSON *found = nullptr;
+        int n = cJSON_GetArraySize(arr);
+        for (int i = 0; i < n; i++) {
+            cJSON *it = cJSON_GetArrayItem(arr, i);
+            if (Jstr(it, "id") == id) { found = it; break; }
+        }
+        cJSON *j = cJSON_CreateObject();
+        if (found) {
+            cJSON *data = cJSON_Duplicate(found, 1);
+            cJSON_AddNumberToObject(j, "code", 0);
+            cJSON_AddItemToObject(j, "data", data);
+        } else {
+            cJSON_AddNumberToObject(j, "code", 1);
+            cJSON_AddStringToObject(j, "message", "歌单不存在");
+        }
+        cJSON_Delete(arr);
+        std::string s = Jprint(j);
+        cJSON_Delete(j);
+        return s;
+    }
+
+    if (method == "POST" && p == "/api/local/playlists") {
+        cJSON *b = body.empty() ? nullptr : cJSON_Parse(body.c_str());
+        std::string id = b ? Jstr(b, "id") : "";
+        std::string title = b ? Jstr(b, "title") : "";
+        std::string cover = b ? Jstr(b, "cover") : "";
+        cJSON *tracks = b ? Jobj(b, "tracks") : nullptr;
+        if (tracks && !cJSON_IsArray(tracks)) tracks = nullptr;
+        if (title.empty() && !tracks) {
+            cJSON_Delete(b);
+            return fail_json("need title or tracks");
+        }
+        std::string outId = localpls_upsert(env, id.c_str(), title.c_str(),
+                                            cover.c_str(),
+                                            tracks ? cJSON_Duplicate(tracks, 1) : nullptr);
+        cJSON_Delete(b);
+        cJSON *j = cJSON_CreateObject();
+        cJSON_AddNumberToObject(j, "code", 0);
+        cJSON *d = cJSON_CreateObject();
+        cJSON_AddStringToObject(d, "id", outId.c_str());
+        cJSON_AddItemToObject(j, "data", d);
+        std::string s = Jprint(j);
+        cJSON_Delete(j);
+        return s;
+    }
+
+    if (method == "POST" && p == "/api/local/playlist/delete") {
+        cJSON *b = body.empty() ? nullptr : cJSON_Parse(body.c_str());
+        std::string id = b ? Jstr(b, "id") : "";
+        if (b) cJSON_Delete(b);
+        cJSON *arr = localpls_load(env);
+        int n = cJSON_GetArraySize(arr);
+        for (int i = 0; i < n; i++) {
+            cJSON *it = cJSON_GetArrayItem(arr, i);
+            if (Jstr(it, "id") == id) {
+                cJSON_DeleteItemFromArray(arr, i);
+                break;
+            }
+        }
+        localpls_save(env, arr);
+        cJSON_Delete(arr);
+        return "{\"code\":0}";
+    }
+
+    // ---- import a shared playlist link -> saved as a new local playlist
+    if (method == "POST" && p == "/api/import/playlist") {
+        cJSON *b = body.empty() ? nullptr : cJSON_Parse(body.c_str());
+        std::string url = b ? Jstr(b, "url") : "";
+        if (b) cJSON_Delete(b);
+        if (url.empty()) return fail_json("missing url");
+        cJSON *parsed = import_parse(env, url);
+        if (cJSON_GetObjectItemCaseSensitive(parsed, "error")) {
+            std::string msg = Jstr(parsed, "error");
+            cJSON_Delete(parsed);
+            return fail_json(msg);
+        }
+        std::string title = Jstr(parsed, "title");
+        if (title.empty()) {
+            title = src_label(Jstr(parsed, "src")) + std::string(" 歌单");
+        }
+        std::string cover = Jstr(parsed, "cover");
+        cJSON *tracks = Jarr(parsed, "tracks");
+        cJSON *tracksCopy = tracks ? cJSON_Duplicate(tracks, 1) : cJSON_CreateArray();
+        std::string outId = localpls_upsert(env, "", title.c_str(), cover.c_str(), tracksCopy);
+        int cnt = cJSON_GetArraySize(tracksCopy);
+        std::string psrc = Jstr(parsed, "src");
+        cJSON_Delete(parsed);
+        cJSON *j = cJSON_CreateObject();
+        cJSON_AddNumberToObject(j, "code", 0);
+        cJSON *d = cJSON_CreateObject();
+        cJSON_AddStringToObject(d, "id", outId.c_str());
+        cJSON_AddStringToObject(d, "title", title.c_str());
+        cJSON_AddStringToObject(d, "src", psrc.c_str());
+        cJSON_AddNumberToObject(d, "count", cnt);
+        cJSON_AddItemToObject(j, "data", d);
         std::string s = Jprint(j);
         cJSON_Delete(j);
         return s;

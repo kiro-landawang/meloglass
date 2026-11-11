@@ -399,6 +399,7 @@ public class MainActivity extends Activity {
                         buf.toByteArray(), android.util.Base64.NO_WRAP));
                 resp.put("ct", ct);
                 resp.put("sc", new JSONArray(sc));
+                resp.put("url", conn.getURL().toString());
             } catch (Exception e) {
                 try {
                     resp.put("s", 0);
@@ -407,6 +408,7 @@ public class MainActivity extends Activity {
                             android.util.Base64.NO_WRAP));
                     resp.put("ct", "text/plain");
                     resp.put("sc", new JSONArray());
+                    resp.put("url", url);
                 } catch (Exception ignored) {
                 }
             } finally {

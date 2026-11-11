@@ -167,6 +167,20 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
 .src-tag{font-size:10px;padding:3px 8px;border-radius:8px;flex:none;font-weight:600}
 .src-qq{background:rgba(80,190,255,.18);color:#5ecbff}.src-wy{background:rgba(255,90,90,.16);color:#ff7a7a}
 .src-kg{background:rgba(90,220,160,.16);color:#4ade80}.src-qs{background:rgba(255,160,80,.16);color:#ffb066}
+/* 导入/合并 */
+.imp-row{margin:2px 0 12px}.imp-row .btn{width:100%}
+.lpl-h{font-size:12px;color:var(--ink3);margin:14px 0 8px;letter-spacing:.04em}
+.ovl{position:fixed;inset:0;z-index:90;display:none;align-items:flex-end;justify-content:center;background:rgba(5,8,20,.55)}
+.ovl.open{display:flex}
+.ovl-box{width:min(92vw,420px);border-radius:22px 22px 0 0;padding:18px 18px 22px;background:var(--panel)}
+.ovl-t{font-size:15px;font-weight:700;color:var(--ink);margin-bottom:10px}
+.ovl-h{font-size:11.5px;color:var(--ink3);margin-bottom:10px}
+.ovl textarea{width:100%;min-height:96px;border-radius:14px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:var(--ink);padding:10px 12px;font-size:12.5px;outline:0;resize:vertical;box-sizing:border-box}
+.ovl-btns{display:flex;gap:10px;margin-top:14px}.ovl-btns .btn{flex:1}
+.mrg-it{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;cursor:pointer;margin-bottom:8px;background:rgba(255,255,255,.05)}
+.mrg-it:hover{background:rgba(255,255,255,.1)}
+.mrg-it .m-t{font-size:13px;color:var(--ink)}.mrg-it .m-s{font-size:10.5px;color:var(--ink3)}
+.d-ops{display:flex;gap:10px;margin-bottom:14px}.d-ops .btn{flex:1}
 
 .plat-grid{display:flex;flex-direction:column;gap:10px}
 .plat{display:flex;align-items:center;gap:13px;padding:13px 14px;border-radius:20px}
@@ -402,7 +416,11 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
           <div class="seg-pages" id="segPages">
             <div class="seg-p" id="discoverList"></div>
             <div class="seg-p" id="playlistMine">
-              <div class="merge-note">登录音乐平台后，这里显示你的歌单。没登录之前是空的，不会拿假数据凑数。</div>
+              <div class="imp-row"><button class="btn" id="impBtn">＋ 导入歌单（粘贴分享链接）</button></div>
+              <div class="lpl-h">本地歌单 <small>四平台导入 · 可合并 · 播放自动换源</small></div>
+              <div id="localPlsList"><div class="merge-note">把网易云 / QQ / 酷狗 / 汽水的歌单分享链接粘进来，导入后存在本机，可跨平台合并。</div></div>
+              <div class="lpl-h">在线歌单 <small>登录平台后显示</small></div>
+              <div id="onlinePls"></div>
             </div>
             <div class="seg-p" id="libraryMine">
               <div class="merge-note">最近播放会在你点过歌曲之后出现。</div>
@@ -531,6 +549,10 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
         <div class="d-sub" id="dSub">32 首 · 缓私域 · 已整合 3 个平台</div>
       </div>
       <div class="d-body">
+        <div class="d-ops" id="dOps" style="display:none">
+          <button class="btn" id="dMergeBtn">⊕ 合并其他歌单</button>
+          <button class="btn ghost" id="dDelBtn">✕ 删除本歌单</button>
+        </div>
         <div class="d-h2">曲目列表</div>
         <div id="dTracks"></div>
       </div>
@@ -545,6 +567,26 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
 
   <div class="toast glass" id="toast"></div>
   <audio id="player" preload="none"></audio>
+
+  <!-- 导入弹层 -->
+  <div class="ovl" id="impOvl">
+    <div class="ovl-box glass">
+      <div class="ovl-t">导入歌单</div>
+      <textarea id="impUrl" placeholder="粘贴网易云 / QQ / 酷狗 / 汽水的歌单分享链接或口令&#10;例：https://music.163.com/playlist?id=xxx"></textarea>
+      <div class="ovl-btns"><button class="btn" id="impGo">导入</button><button class="btn ghost" data-ovl-close>取消</button></div>
+    </div>
+  </div>
+
+  <!-- 合并弹层 -->
+  <div class="ovl" id="mrgOvl">
+    <div class="ovl-box glass">
+      <div class="ovl-t">合并到「<span id="mrgTitle"></span>」</div>
+      <div class="ovl-h">选一个要并进来的歌单（同曲自动去重）</div>
+      <div id="mrgList"></div>
+      <div class="ovl-btns"><button class="btn ghost" data-ovl-close>取消</button></div>
+    </div>
+  </div>
+
   <div class="nowp glass" id="nowp">
     <div class="np-t" id="npTitle">未在播放</div>
     <div class="np-a" id="npArtist">点搜索结果即可试听</div>
@@ -873,17 +915,20 @@ async function playItem(it){
   if(!it||!it.id){toast('无法播放');return}
   toast('取播放链 · '+(srcName[it.src]||it.src));
   try{
-    const j=await api('/api/playurl?src='+it.src+'&id='+encodeURIComponent(it.id));
+    const j=await api('/api/playurl?src='+it.src+'&id='+encodeURIComponent(it.id)
+      +'&title='+encodeURIComponent(it.title||'')+'&artist='+encodeURIComponent(it.artist||''));
     const d=j.data||{};
     if(!d.url){toast(d.message||'该曲需要登录或会员');return}
+    if(d.switched_to) toast('已换源：'+(d.switched_from||'')+' → '+d.switched_to+(d.switched_to==='QQ音乐'?'（SVIP 完整版）':''));
     player.src=d.url; player.play().catch(()=>toast('点一下播放条再试'));
     $('#nowp').classList.add('on');
     $('#npTitle').textContent=it.title||d.title||'正在播放';
-    $('#npArtist').textContent=(it.artist||d.artist||'')+' · '+(srcName[it.src]||'');
+    $('#npArtist').textContent=(it.artist||d.artist||'')+' · '+(srcName[d.src]||srcName[it.src]||'');
   }catch(err){toast('播放失败 '+err.message)}
 }
 async function openPlaylist(src,id,title,cover){
   openDetail();
+  $('#dOps').style.display='none';
   $('#dTitle').textContent=title||'歌单';
   $('#dSub').textContent='加载曲目中…';
   if(cover) $('#dHeroImg').style.backgroundImage='url('+cover+')';
@@ -899,13 +944,120 @@ async function openPlaylist(src,id,title,cover){
 }
 
 async function loadMinePlaylists(){
-  const box=$('#playlistMine'); if(!box) return;
+  const box=$('#onlinePls'); if(!box) return;
   try{
     const j=await api('/api/mine/playlists');
     const list=j.data||[];
     if(!list.length){ box.innerHTML='<div class="merge-note">登录网易云或 QQ 后，这里显示你的歌单。</div>'; return; }
     box.innerHTML=list.map(it=>`<div class="mini glass" data-pl-src="${it.src}" data-pl-id="${it.id}" data-pl-title="${(it.title||'').replace(/"/g,'&quot;')}" data-pl-cover="${it.cover||''}"><div class="m-c" style="${it.cover?'background-image:url('+it.cover+');background-size:cover':'background:linear-gradient(150deg,#2b3a86,#c76a9a)'}"></div><div><div class="m-t">${it.title||''}</div><div class="m-s">${it.count||0} 首 · ${srcName[it.src]||''}</div></div></div>`).join('');
   }catch(e){ box.innerHTML='<div class="merge-note">歌单加载失败</div>'; }
+}
+
+/* ============ 12b. 本地歌单：导入 / 播放 / 合并 ============ */
+let localPlCache=[], curLocalId='';
+async function loadLocalPlaylists(){
+  const box=$('#localPlsList'); if(!box) return;
+  try{
+    const j=await api('/api/local/playlists');
+    localPlCache=j.data||[];
+    if(!localPlCache.length){
+      box.innerHTML='<div class="merge-note">把网易云 / QQ / 酷狗 / 汽水的歌单分享链接粘进来，导入后存在本机，可跨平台合并。</div>';
+      return;
+    }
+    box.innerHTML=localPlCache.map(pl=>`<div class="mini glass" data-local-id="${pl.id}" data-local-title="${(pl.title||'').replace(/"/g,'&quot;')}" data-local-cover="${pl.cover||''}"><div class="m-c" style="${pl.cover?'background-image:url('+pl.cover+');background-size:cover':'background:linear-gradient(150deg,#3f2b86,#2b8686)'}"></div><div><div class="m-t">${pl.title||''}</div><div class="m-s">${pl.count||0} 首 · 本地</div></div></div>`).join('');
+  }catch(e){ box.innerHTML='<div class="merge-note">本地歌单读取失败</div>'; }
+}
+async function openLocal(id){
+  curLocalId=id;
+  try{
+    const j=await api('/api/local/playlist?id='+encodeURIComponent(id));
+    const d=j.data||{};
+    const tracks=d.tracks||[];
+    openDetail();
+    $('#dTitle').textContent=d.title||'本地歌单';
+    $('#dSub').textContent=tracks.length+' 首 · 本地';
+    if(d.cover) $('#dHeroImg').style.backgroundImage='url('+d.cover+')';
+    $('#dOps').style.display='flex';
+    $('#dTracks').innerHTML=tracks.map((t,i)=>`<div class="d-track" data-play='${JSON.stringify({src:t.src,id:t.id,title:t.title,artist:t.artist}).replace(/'/g,'&#39;')}'><span class="d-n">${String(i+1).padStart(2,'0')}</span><div><div class="m-t">${t.title||''}</div><div class="m-s">${t.artist||''} · ${srcName[t.src]||t.src||''}</div></div><span class="d-hb">♥</span></div>`).join('');
+  }catch(e){ toast('本地歌单读取失败 '+e.message); }
+}
+/* 点击分发：本地歌单卡片 */
+document.addEventListener('click',e=>{
+  const lc=e.target.closest('[data-local-id]');
+  if(lc){ openLocal(lc.dataset.localId); return; }
+  if(e.target.closest('#impBtn')){
+    $('#impOvl').classList.add('open');
+    setTimeout(()=>$('#impUrl').focus(),80);
+    return;
+  }
+  if(e.target.closest('[data-ovl-close]')){
+    $$('.ovl').forEach(o=>o.classList.remove('open')); return;
+  }
+  if(e.target.closest('#impGo')){ doImport(); return; }
+  if(e.target.closest('#dMergeBtn')){ openMergePicker(); return; }
+  if(e.target.closest('#dDelBtn')){ doDeleteLocal(); return; }
+});
+async function doImport(){
+  const url=$('#impUrl').value.trim();
+  if(!url){ toast('先粘贴歌单分享链接'); return; }
+  const btn=$('#impGo'); btn.textContent='解析中…'; btn.disabled=true;
+  try{
+    const j=await apiPost('/api/import/playlist',{url});
+    if(j && j.code===0){
+      toast('导入成功：'+(j.data.title||'')+'（'+j.data.count+' 首）');
+      $('#impUrl').value=''; $$('.ovl').forEach(o=>o.classList.remove('open'));
+      await loadLocalPlaylists();
+    } else toast((j&&j.message)||'导入失败');
+  }catch(e){ toast('导入失败 '+e.message); }
+  btn.textContent='导入'; btn.disabled=false;
+}
+function mrgCandidates(exceptId){
+  const items=[];
+  localPlCache.forEach(pl=>{ if(pl.id!==exceptId) items.push({kind:'local',id:pl.id,title:pl.title||'本地歌单',sub:pl.count+' 首 · 本地'}); });
+  return items;
+}
+function openMergePicker(){
+  if(!curLocalId) return;
+  const cur=localPlCache.find(p=>p.id===curLocalId);
+  $('#mrgTitle').textContent=(cur&&cur.title)||'本地歌单';
+  const cands=mrgCandidates(curLocalId);
+  if(!cands.length){ toast('先再导入一个歌单，才能合并'); return; }
+  $('#mrgList').innerHTML=cands.map(c=>`<div class="mrg-it" data-mrg-id="${c.id}" data-mrg-kind="${c.kind}" data-mrg-title="${(c.title||'').replace(/"/g,'&quot;')}"><div><div class="m-t">${c.title}</div><div class="m-s">${c.sub}</div></div></div>`).join('');
+  $('#mrgOvl').classList.add('open');
+}
+$('#mrgList') && $('#mrgList').addEventListener('click',async e=>{
+  const it=e.target.closest('.mrg-it'); if(!it||!curLocalId) return;
+  $('#mrgOvl').classList.remove('open');
+  try{
+    const a=await api('/api/local/playlist?id='+encodeURIComponent(curLocalId));
+    const ta=(a.data&&a.data.tracks)||[];
+    let tb=[];
+    if(it.dataset.mrgKind==='local'){
+      const b=await api('/api/local/playlist?id='+encodeURIComponent(it.dataset.mrgId));
+      tb=(b.data&&b.data.tracks)||[];
+    }
+    const seen=new Set(ta.map(t=>(t.src||'')+'|'+(t.id||'')));
+    let added=0;
+    tb.forEach(t=>{
+      const k=(t.src||'')+'|'+(t.id||'');
+      if(!seen.has(k)){ seen.add(k); ta.push(t); added++; }
+    });
+    const sv=await apiPost('/api/local/playlists',{id:curLocalId,title:(a.data&&a.data.title)||'',tracks:ta});
+    toast('合并完成：新增 '+added+' 首，共 '+ta.length+' 首');
+    await loadLocalPlaylists();
+  }catch(err){ toast('合并失败 '+err.message); }
+});
+async function doDeleteLocal(){
+  if(!curLocalId) return;
+  try{
+    await apiPost('/api/local/playlist/delete',{id:curLocalId});
+    toast('已删除');
+    curLocalId='';
+    $('#dOps').style.display='none';
+    $('#dTracks').innerHTML='';
+    $('#dTitle').textContent='歌单'; $('#dSub').textContent='';
+    await loadLocalPlaylists();
+  }catch(e){ toast('删除失败 '+e.message); }
 }
 
 /* ================= 12. 平台扫码 / Cookie 登录 ================= */
@@ -1012,6 +1164,7 @@ $('#loginCookieBtn').addEventListener('click',async()=>{
 });
 refreshLoginStatus();
 loadMinePlaylists();
+loadLocalPlaylists();
 if($('#meLogin')) $('#meLogin').addEventListener('click',e=>{e.preventDefault();e.stopPropagation();openLogin('wy')});
 </script>
 </body>
