@@ -334,6 +334,7 @@ html.light .noglass .glass{background:rgba(255,255,255,.6)}
 
       <!-- ============ 首页 ============ -->
       <section class="page active" data-page="home">
+        <div class="search glass" id="homeSearch" role="button">🔍<span style="flex:1;font-size:13.5px;color:var(--ink3)">搜索歌曲 / 歌手，聚合全平台结果</span></div>
         <div class="sec-t">登录音乐平台 <small>官方页面登录，QQ / 微信 / 账号密码都行，登完自动保存</small></div>
         <div class="plat-grid">
           <div class="plat glass">
@@ -599,6 +600,13 @@ tabs.forEach(t=>t.addEventListener('click',()=>{
   setTimeout(()=>movePill(t,false),420); /* 动画结束后把样式钉准 */
 }));
 requestAnimationFrame(()=>movePill($('.tab.active'),false));
+
+/* 首页搜索框：点击直达搜索页并聚焦 */
+$('#homeSearch').addEventListener('click',()=>{
+  const tb=[...$$('.tab')].find(t=>t.dataset.tab==='search');
+  if(tb && curTab!=='search') tb.click();
+  setTimeout(()=>{const i=$('#srInput'); if(i) i.focus();},380);
+});
 
 /* ================= 2. Submit Morph（通用三段按钮） ================= */
 document.addEventListener('click',e=>{
